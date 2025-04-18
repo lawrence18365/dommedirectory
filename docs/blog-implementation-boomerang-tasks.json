@@ -1,0 +1,76 @@
+{
+  "workflowName": "Blog Implementation Plan",
+  "description": "Recurring boomerang task workflow for blog implementation steps with reminders and follow-ups.",
+  "steps": [
+    {
+      "id": "step1",
+      "name": "Set up Supabase tables",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please complete setting up Supabase tables for the blog.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Supabase tables setup is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step2",
+      "name": "Implement Supabase service functions",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please implement Supabase service functions for the blog.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Supabase service functions implementation is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step3",
+      "name": "Build admin UI",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please build the admin UI for the blog.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Admin UI build is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step4",
+      "name": "Build public-facing blog pages",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please build the public-facing blog pages.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Public-facing blog pages build is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step5",
+      "name": "Integrate SEO metadata and structured data",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please integrate SEO metadata and structured data for the blog.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: SEO metadata and structured data integration is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step6",
+      "name": "Create sitemap generation",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please create sitemap generation for the blog.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Sitemap generation creation is still pending. Please complete it soon."
+      }
+    },
+    {
+      "id": "step7",
+      "name": "Style with Tailwind CSS",
+      "reminderInterval": "1d",
+      "reminderMessage": "Reminder: Please style the blog with Tailwind CSS.",
+      "followUp": {
+        "action": "remind",
+        "message": "Follow-up: Tailwind CSS styling is still pending. Please complete it soon."
+      }
+    }
+  ]
+}
