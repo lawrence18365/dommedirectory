@@ -244,7 +244,7 @@ export default function AdminVerifications() {
                             </div>
                             <div className="flex space-x-2 mt-1">
                               {verification.document_urls.map((url, index) => (
-                                
+                                <a
                                   key={index}
                                   href={url}
                                   target="_blank"
