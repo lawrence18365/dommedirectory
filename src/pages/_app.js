@@ -1,35 +1,66 @@
 import { SessionContextProvider } from '@supabase/auth-helpers-react';
-import { Playfair_Display } from 'next/font/google'; // Import the font
-import { ProfileProvider } from '../context/ProfileContext'; // Import ProfileProvider
+import { Cinzel, Inter } from 'next/font/google';
+import { ProfileProvider } from '../context/ProfileContext';
+import { ToastProvider } from '../context/ToastContext';
+import ErrorBoundary from '../components/ui/ErrorBoundary';
 import '../styles/globals.css';
-import { supabase } from '../utils/supabase'; // Import the single client instance
+import { supabase } from '../utils/supabase';
 
-// Configure the font
-const playfair = Playfair_Display({
-  subsets: ['latin'], // Specify subsets if needed
-  variable: '--font-playfair', // Define a CSS variable
+// Cinzel for headings - Roman-inspired, authoritative, luxurious
+const cinzel = Cinzel({
+  subsets: ['latin'],
+  variable: '--font-heading',
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+});
+
+// Inter for body text - Modern, clean, highly readable
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-body',
+  display: 'swap',
 });
 
 function MyApp({ Component, pageProps }) {
   const getLayout = Component.getLayout || ((page) => page);
 
   return (
-    // Pass the variable to the CSS
     <>
       <style jsx global>{`
         :root {
-          --font-playfair: ${playfair.style.fontFamily};
+          --font-heading: ${cinzel.style.fontFamily};
+          --font-body: ${inter.style.fontFamily};
+        }
+        
+        html {
+          font-family: var(--font-body), system-ui, sans-serif;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+          font-family: var(--font-heading), serif;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        
+        /* Special styling for hero headlines */
+        .font-display {
+          font-family: var(--font-heading), serif;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
         }
       `}</style>
-      <SessionContextProvider
-        supabaseClient={supabase} // Use the imported client instance
-        initialSession={pageProps.initialSession}
-      >
-        {/* Wrap with ProfileProvider */}
-        <ProfileProvider>
-          {getLayout(<Component {...pageProps} />)}
-        </ProfileProvider>
-      </SessionContextProvider>
+      <ErrorBoundary>
+        <SessionContextProvider
+          supabaseClient={supabase}
+          initialSession={pageProps.initialSession}
+        >
+          <ProfileProvider>
+            <ToastProvider>
+              {getLayout(<Component {...pageProps} />)}
+            </ToastProvider>
+          </ProfileProvider>
+        </SessionContextProvider>
+      </ErrorBoundary>
     </>
   );
 }

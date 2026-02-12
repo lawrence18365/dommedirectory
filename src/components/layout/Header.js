@@ -3,56 +3,57 @@ import { useRouter } from 'next/router';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useProfile } from '../../context/ProfileContext'; // Import useProfile
+import { useProfile } from '../../context/ProfileContext';
 
 export default function Header() {
   const supabase = useSupabaseClient();
   const user = useUser();
   const router = useRouter();
-  const { profile, loading: profileLoading } = useProfile(); // Use profile from context
-
-  // Removed local profile state and fetchProfile useEffect
+  const { profile, loading: profileLoading } = useProfile();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    // Clear profile context? Maybe not needed if user change triggers context update
     router.push('/');
   };
 
   const navigation = [
     { name: 'Home', href: '/', current: router.pathname === '/' },
-    { name: 'Cities', href: '/cities', current: router.pathname === '/cities' || router.pathname.startsWith('/location/') },
-    { name: 'Blog', href: '/blog', current: router.pathname === '/blog' || router.pathname.startsWith('/blog/') },
+    { name: 'Search', href: '/cities', current: router.pathname === '/cities' || router.pathname.startsWith('/location/') },
+    { name: 'Reviews', href: '/reviews', current: router.pathname === '/reviews' },
+    { name: 'Videos', href: '/videos', current: router.pathname === '/videos' },
+    { name: 'Live Cams', href: '/live-cams', current: router.pathname === '/live-cams' },
   ];
 
   const userNavigation = [
-    // { name: 'Your Profile', href: '/profile' }, // Removed as requested
     { name: 'Dashboard', href: '/dashboard' },
     { name: 'Create Listing', href: '/listings/create' },
-    { name: 'Settings', href: '/settings' }, // Add Settings link
+    { name: 'Settings', href: '/settings' },
   ];
 
   return (
-    <Disclosure as="nav" className="bg-purple-900">
+    <Disclosure as="nav" className="bg-[#0a0a0a] border-b border-gray-800">
       {({ open }) => (
         <>
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-16 justify-between">
-              <div className="flex">
-                <div className="flex flex-shrink-0 items-center">
-                  <Link href="/" className="text-white font-bold text-xl">
-                    DommeDirectory
-                  </Link>
-                </div>
-                <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+              {/* Logo */}
+              <div className="flex items-center">
+                <Link href="/" className="flex-shrink-0 flex items-center">
+                  <span className="text-white font-black text-xl tracking-tight">
+                    DOMME<span className="text-red-600">DIR</span>
+                  </span>
+                </Link>
+                
+                {/* Desktop Navigation */}
+                <div className="hidden md:ml-8 md:flex md:space-x-1">
                   {navigation.map((item) => (
                     <Link
                       key={item.name}
                       href={item.href}
-                      className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${
+                      className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                         item.current 
-                          ? 'border-b-2 border-white text-white' 
-                          : 'text-gray-300 hover:border-b-2 hover:border-gray-300 hover:text-white'
+                          ? 'text-white bg-gray-800' 
+                          : 'text-gray-300 hover:text-white hover:bg-gray-800'
                       }`}
                     >
                       {item.name}
@@ -60,16 +61,19 @@ export default function Header() {
                   ))}
                 </div>
               </div>
-              <div className="hidden sm:ml-6 sm:flex sm:items-center">
+
+              {/* Right Side - Auth */}
+              <div className="hidden md:flex md:items-center md:space-x-4">
                 {user ? (
                   <Menu as="div" className="relative ml-3">
                     <div>
-                      <Menu.Button className="flex rounded-full bg-white text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800">
-                        <span className="sr-only">Open user menu</span>
-                        <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center text-white">
-                          {/* Use profile from context, handle loading state? */}
+                      <Menu.Button className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
+                        <div className="h-8 w-8 rounded-full bg-red-600 flex items-center justify-center text-white text-sm font-bold">
                           {profileLoading ? '...' : profile?.display_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
                         </div>
+                        <span className="text-sm font-medium">
+                          {profile?.display_name || user?.email?.split('@')[0]}
+                        </span>
                       </Menu.Button>
                     </div>
                     <Transition
@@ -80,14 +84,14 @@ export default function Header() {
                       leaveFrom="transform opacity-100 scale-100"
                       leaveTo="transform opacity-0 scale-95"
                     >
-                      <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                      <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-[#1a1a1a] py-1 shadow-lg ring-1 ring-black ring-opacity-5 border border-gray-700 focus:outline-none">
                         {userNavigation.map((item) => (
                           <Menu.Item key={item.name}>
                             {({ active }) => (
                               <Link
                                 href={item.href}
-                                className={`block px-4 py-2 text-sm text-gray-700 ${
-                                  active ? 'bg-gray-100' : ''
+                                className={`block px-4 py-2 text-sm text-gray-300 ${
+                                  active ? 'bg-gray-800 text-white' : ''
                                 }`}
                               >
                                 {item.name}
@@ -99,8 +103,8 @@ export default function Header() {
                           {({ active }) => (
                             <button
                               onClick={handleSignOut}
-                              className={`block w-full text-left px-4 py-2 text-sm text-gray-700 ${
-                                active ? 'bg-gray-100' : ''
+                              className={`block w-full text-left px-4 py-2 text-sm text-red-400 ${
+                                active ? 'bg-gray-800' : ''
                               }`}
                             >
                               Sign out
@@ -111,24 +115,26 @@ export default function Header() {
                     </Transition>
                   </Menu>
                 ) : (
-                  <div className="flex items-center space-x-4">
+                  <>
                     <Link
                       href="/auth/login"
-                      className="text-gray-300 hover:text-white"
+                      className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium"
                     >
                       Login
                     </Link>
                     <Link
                       href="/auth/register"
-                      className="bg-purple-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-purple-700"
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
                     >
                       Sign Up
                     </Link>
-                  </div>
+                  </>
                 )}
               </div>
-              <div className="-mr-2 flex items-center sm:hidden">
-                <Disclosure.Button className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
+
+              {/* Mobile menu button */}
+              <div className="flex items-center md:hidden">
+                <Disclosure.Button className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none">
                   <span className="sr-only">Open main menu</span>
                   {open ? (
                     <XMarkIcon className="block h-6 w-6" aria-hidden="true" />
@@ -140,39 +146,38 @@ export default function Header() {
             </div>
           </div>
 
-          <Disclosure.Panel className="sm:hidden">
+          {/* Mobile menu */}
+          <Disclosure.Panel className="md:hidden bg-[#111]">
             <div className="space-y-1 px-2 pb-3 pt-2">
               {navigation.map((item) => (
                 <Disclosure.Button
                   key={item.name}
-                  as="a"
+                  as={Link}
                   href={item.href}
                   className={`block rounded-md px-3 py-2 text-base font-medium ${
                     item.current
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                   }`}
                 >
                   {item.name}
                 </Disclosure.Button>
               ))}
             </div>
-            <div className="border-t border-gray-700 pb-3 pt-4">
+            <div className="border-t border-gray-800 pb-3 pt-4">
               {user ? (
                 <>
                   <div className="flex items-center px-5">
                     <div className="flex-shrink-0">
-                      <div className="h-10 w-10 rounded-full bg-purple-500 flex items-center justify-center text-white">
-                        {/* Use profile from context */}
+                      <div className="h-10 w-10 rounded-full bg-red-600 flex items-center justify-center text-white font-bold">
                         {profileLoading ? '...' : profile?.display_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
                       </div>
                     </div>
                     <div className="ml-3">
                       <div className="text-base font-medium text-white">
-                        {/* Use profile from context */}
                         {profileLoading ? 'Loading...' : profile?.display_name}
                       </div>
-                      <div className="text-sm font-medium text-gray-300">
+                      <div className="text-sm font-medium text-gray-400">
                         {user.email}
                       </div>
                     </div>
@@ -181,9 +186,9 @@ export default function Header() {
                     {userNavigation.map((item) => (
                       <Disclosure.Button
                         key={item.name}
-                        as="a"
+                        as={Link}
                         href={item.href}
-                        className="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white"
+                        className="block rounded-md px-3 py-2 text-base font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
                       >
                         {item.name}
                       </Disclosure.Button>
@@ -191,7 +196,7 @@ export default function Header() {
                     <Disclosure.Button
                       as="button"
                       onClick={handleSignOut}
-                      className="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white w-full text-left"
+                      className="block w-full text-left rounded-md px-3 py-2 text-base font-medium text-red-400 hover:bg-gray-800"
                     >
                       Sign out
                     </Disclosure.Button>
@@ -200,16 +205,16 @@ export default function Header() {
               ) : (
                 <div className="mt-3 space-y-1 px-2">
                   <Disclosure.Button
-                    as="a"
+                    as={Link}
                     href="/auth/login"
-                    className="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white"
+                    className="block rounded-md px-3 py-2 text-base font-medium text-gray-300 hover:bg-gray-800 hover:text-white"
                   >
                     Login
                   </Disclosure.Button>
                   <Disclosure.Button
-                    as="a"
+                    as={Link}
                     href="/auth/register"
-                    className="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white"
+                    className="block rounded-md px-3 py-2 text-base font-medium bg-red-600 text-white hover:bg-red-700"
                   >
                     Sign Up
                   </Disclosure.Button>

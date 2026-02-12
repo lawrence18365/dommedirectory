@@ -1,4 +1,55 @@
 import { supabase } from '../utils/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+/**
+ * Get user from request (for API routes)
+ * @param {Object} req - Next.js request object
+ */
+export const getUserFromRequest = async (req) => {
+  // Create a new Supabase client for server-side auth
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('Missing Supabase environment variables');
+    return null;
+  }
+
+  const supabaseServer = createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+  
+  // Get the JWT from the Authorization header
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return null;
+  }
+  
+  const token = authHeader.replace('Bearer ', '');
+  if (!token) {
+    return null;
+  }
+  
+  try {
+    const { data: { user }, error } = await supabaseServer.auth.getUser(token);
+    
+    if (error || !user) {
+      return null;
+    }
+    
+    return user;
+  } catch (err) {
+    console.error('Error getting user from request:', err);
+    return null;
+  }
+};
 
 /**
  * Sign up a new domme

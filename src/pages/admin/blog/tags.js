@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
-import { fetchTags, createTag, updateTag, deleteTag } from '../../services/blog';
+import { useRouter } from 'next/router';
+import { fetchTags, createTag, updateTag, deleteTag } from '../../../services/blog';
+import { getCurrentUser } from '../../../services/auth';
 import { useForm } from 'react-hook-form';
 
 export default function AdminTags() {
   const [tags, setTags] = useState([]);
   const [editingTag, setEditingTag] = useState(null);
+  const router = useRouter();
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
-    loadTags();
-  }, []);
+    const checkAuth = async () => {
+      const { user, error } = await getCurrentUser();
+      if (error || !user) {
+        router.push('/auth/login');
+        return;
+      }
+      loadTags();
+    };
+    checkAuth();
+  }, [router]);
 
   const loadTags = async () => {
     const tgs = await fetchTags();
@@ -66,7 +77,7 @@ export default function AdminTags() {
           {errors.slug && <p className="text-red-600">Slug is required</p>}
         </div>
         <div>
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded mr-2">
+          <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded mr-2">
             {editingTag ? 'Update Tag' : 'Create Tag'}
           </button>
           {editingTag && (
@@ -83,7 +94,7 @@ export default function AdminTags() {
               <strong>{tag.name}</strong>
             </div>
             <div>
-              <button onClick={() => onEdit(tag)} className="text-blue-600 hover:underline mr-4">Edit</button>
+              <button onClick={() => onEdit(tag)} className="text-red-600 hover:underline mr-4">Edit</button>
               <button onClick={() => onDelete(tag.id)} className="text-red-600 hover:underline">Delete</button>
             </div>
           </li>

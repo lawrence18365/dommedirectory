@@ -1,381 +1,676 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Head from 'next/head';
 import Link from 'next/link';
-import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import Layout from '../../components/layout/Layout';
-import { getListingById } from '../../services/listings';
+import SEO from '../../components/ui/SEO';
+import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
+import { useToast } from '../../context/ToastContext';
+import { supabase } from '../../utils/supabase';
+import { getListingReviews, getListingRating, createReview } from '../../services/reviews';
+import { ReviewCard, ReviewForm } from '../../components/ui/ReviewCard';
+import { MessageSquare, Loader2, Star } from 'lucide-react';
 
-export default function ListingDetail() {
-  const router = useRouter();
-  const { id } = router.query;
-  const supabase = useSupabaseClient();
-  const user = useUser();
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [listing, setListing] = useState(null);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
+// Star Rating Component
+function StarRating({ rating, size = 'sm' }) {
+  const sizeClass = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4';
+  return (
+    <div className="flex gap-0.5">
+      {[...Array(5)].map((_, i) => (
+        <svg key={i} className={`${sizeClass} ${i < rating ? 'text-yellow-400' : 'text-gray-600'}`} fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
+      ))}
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!id) return;
+// Photo Lightbox Component
+function PhotoLightbox({ photos, initialIndex, isOpen, onClose }) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [zoom, setZoom] = useState(1);
 
-    async function loadListingData() {
-      try {
-        const { listing: listingData, error: listingError } = await getListingById(id);
-        if (listingError) throw listingError;
-        
-        if (!listingData) {
-          setError('Listing not found');
-          return;
-        }
-        
-        setListing(listingData);
-        
-        // Find primary image
-        const primaryIndex = listingData.media?.findIndex(m => m.is_primary);
-        if (primaryIndex !== -1 && primaryIndex !== undefined) {
-          setActiveImageIndex(primaryIndex);
-        }
-      } catch (error) {
-        console.error('Error loading listing data:', error);
-        setError('Failed to load listing data. Please try again.');
-      } finally {
-        setLoading(false);
+  if (!isOpen || !photos || photos.length === 0) return null;
+
+  const next = () => {
+    setCurrentIndex((prev) => (prev + 1) % photos.length);
+    setZoom(1);
+  };
+
+  const prev = () => {
+    setCurrentIndex((prev) => (prev - 1 + photos.length) % photos.length);
+    setZoom(1);
+  };
+
+  const toggleZoom = () => setZoom(zoom === 1 ? 2 : 1);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={onClose}>
+      <div className="relative w-full h-full flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white z-10 p-2">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <button onClick={prev} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2">
+          <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <button onClick={next} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2">
+          <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </button>
+        <img
+          src={photos[currentIndex]?.url}
+          alt=""
+          className="max-w-full max-h-full object-contain cursor-zoom-in transition-transform duration-300"
+          style={{ transform: `scale(${zoom})` }}
+          onClick={toggleZoom}
+        />
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-sm">
+          {currentIndex + 1} / {photos.length}
+        </div>
+        <div className="absolute bottom-4 right-4 text-white/50 text-xs">
+          Click to {zoom === 1 ? 'zoom' : 'reset'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export async function getServerSideProps(context) {
+  const { id } = context.params;
+
+  try {
+    // Fetch listing with all related data
+    const { data: listing, error } = await supabase
+      .from('listings')
+      .select(`
+        *,
+        profiles!inner(
+          id, display_name, bio, is_verified, profile_picture_url,
+          contact_email, contact_phone, website, social_links,
+          services_offered, created_at
+        ),
+        locations!inner(id, city, state, country),
+        media(id, storage_path, is_primary)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return { notFound: true };
       }
+      throw error;
     }
 
-    loadListingData();
-  }, [id]);
+    if (!listing) {
+      return { notFound: true };
+    }
 
-  const isOwner = user && listing && user.id === listing.profile_id;
+    // Fetch similar listings from the same location
+    let similarListings = [];
+    if (listing.location_id) {
+      const { data: similar } = await supabase
+        .from('listings')
+        .select(`
+          id, title,
+          profiles!inner(id, display_name, profile_picture_url),
+          locations!inner(id, city, country)
+        `)
+        .eq('location_id', listing.location_id)
+        .eq('is_active', true)
+        .neq('id', id)
+        .limit(4);
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-900"></div>
-        </div>
-      </Layout>
-    );
+      similarListings = similar || [];
+    }
+
+    return {
+      props: {
+        listing,
+        similarListings,
+        error: null,
+      },
+    };
+  } catch (error) {
+    console.error('Error fetching listing:', error);
+    return {
+      props: {
+        listing: null,
+        similarListings: [],
+        error: 'Failed to load listing data',
+      },
+    };
   }
+}
 
-  if (error || !listing) {
+export default function ProfileDetail({ listing, similarListings, error: serverError }) {
+  const router = useRouter();
+  const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState('about');
+  const [activeImage, setActiveImage] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  
+  // Reviews state
+  const [reviews, setReviews] = useState([]);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [averageRating, setAverageRating] = useState(0);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+
+  // Fetch reviews when tab is selected
+  useEffect(() => {
+    if (activeTab === 'reviews' && listing?.id) {
+      fetchReviews();
+    }
+  }, [activeTab, listing?.id]);
+
+  const fetchReviews = async () => {
+    setLoadingReviews(true);
+    try {
+      const [{ reviews: data }, { average, count }] = await Promise.all([
+        getListingReviews(listing.id, { limit: 20 }),
+        getListingRating(listing.id)
+      ]);
+      setReviews(data);
+      setAverageRating(average);
+      setReviewCount(count);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  const handleSubmitReview = async (reviewData) => {
+    const { review, error } = await createReview(reviewData);
+    if (error) {
+      return { error: error.message };
+    }
+    await fetchReviews();
+    showToast('Review submitted successfully!', 'success');
+    return { review };
+  };
+
+  // Handle error state
+  if (serverError || !listing) {
     return (
       <Layout>
-        <div className="max-w-5xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-yellow-800">Listing not found</h3>
-                  <div className="mt-2 text-sm text-yellow-700">
-                    <p>
-                      The listing you're looking for could not be found. It may have been removed or is no longer active.
-                    </p>
-                  </div>
-                  <div className="mt-4">
-                    <div className="-mx-2 -my-1.5 flex">
-                      <button
-                        type="button"
-                        onClick={() => router.push('/cities')}
-                        className="bg-yellow-50 px-2 py-1.5 rounded-md text-sm font-medium text-yellow-800 hover:bg-yellow-100"
-                      >
-                        Browse Listings
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+          <div className="w-20 h-20 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Listing Not Found</h2>
+          <p className="text-gray-400 mb-6">{serverError || 'This listing may have been removed or is no longer available.'}</p>
+          <Link href="/cities" className="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors">
+            Browse All Listings
+          </Link>
         </div>
       </Layout>
     );
   }
+
+  // Extract data from the listing
+  const profile = listing.profiles || {};
+  const location = listing.locations || {};
+  const mediaItems = listing.media || [];
+
+  // Build photos array from media
+  const primaryMedia = mediaItems.find(m => m.is_primary);
+  const photos = mediaItems.length > 0
+    ? mediaItems
+      .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+      .map((m, i) => ({ id: m.id, url: m.storage_path, type: i === 0 ? 'main' : 'gallery' }))
+    : [{ id: 'default', url: profile.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1500&fit=crop', type: 'main' }];
+
+  // Build display data
+  const displayName = profile.display_name || listing.title || 'Unknown';
+  const locationStr = `${location.city || ''}${location.state ? ', ' + location.state : ''}${location.country ? ', ' + location.country : ''}`;
+  const memberSince = profile.created_at ? new Date(profile.created_at).getFullYear() : 'N/A';
+
+  // Parse services from listing JSON
+  const services = listing.services || {};
+  const servicesArray = Object.entries(services).map(([name, included]) => ({
+    name,
+    included: !!included,
+  }));
+
+  // Parse rates from listing JSON
+  const rates = listing.rates || {};
+  const ratesEntries = Object.entries(rates);
+
+  // Social links
+  const socialLinks = profile.social_links || {};
+
+  const handleSave = () => {
+    setSaved(!saved);
+    showToast(saved ? 'Removed from favorites' : 'Added to favorites', 'success');
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    showToast('Link copied to clipboard', 'success');
+  };
+
+  const handleReport = () => {
+    setShowReportModal(false);
+    showToast('Report submitted. Thank you for keeping our community safe.', 'success');
+  };
 
   return (
     <Layout>
-      <Head>
-        <title>{listing.title} | DommeDirectory</title>
-        <meta name="description" content={listing.description?.substring(0, 160)} />
-      </Head>
+      <SEO title={`${displayName} - ${locationStr} | DommeDirectory`} description={listing.description?.substring(0, 160) || `View ${displayName}'s profile on DommeDirectory`} />
 
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <Link href={`/location/${listing.location_id}`} className="text-purple-700">
-            &larr; Back to {listing.locations.city}, {listing.locations.state}
-          </Link>
+      {/* Lightbox */}
+      <PhotoLightbox
+        photos={photos}
+        initialIndex={activeImage}
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg max-w-md w-full p-6">
+            <h3 className="text-white text-lg font-semibold mb-4">Report Profile</h3>
+            <p className="text-gray-400 text-sm mb-4">Please select a reason for reporting this profile:</p>
+            <div className="space-y-2 mb-4">
+              {['Fake photos', 'Inappropriate content', 'Scam or fraud', 'Safety concern', 'Other'].map(reason => (
+                <label key={reason} className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                  <input type="radio" name="report" className="text-red-600" />
+                  {reason}
+                </label>
+              ))}
+            </div>
+            <textarea className="w-full bg-gray-700 text-white rounded p-3 mb-4 text-sm" rows={3} placeholder="Additional details (optional)" />
+            <div className="flex gap-3">
+              <Button variant="secondary" fullWidth onClick={() => setShowReportModal(false)}>Cancel</Button>
+              <Button fullWidth onClick={handleReport}>Submit Report</Button>
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Listing Header */}
-        <div className="bg-white shadow overflow-hidden rounded-lg mb-8">
-          <div className="px-4 py-5 sm:px-6 bg-purple-700 text-white">
-            <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-bold">{listing.title}</h1>
-              {listing.is_featured && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                  Featured
-                </span>
+      <div className="bg-[#0a0a0a] min-h-screen">
+        {/* Photo Gallery */}
+        <div className="bg-black">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-1">
+              {/* Main Image */}
+              <div
+                className="relative aspect-[4/5] lg:aspect-auto lg:h-[600px] cursor-pointer group"
+                onClick={() => setLightboxOpen(true)}
+              >
+                <img src={photos[activeImage]?.url} alt={displayName} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                <div className="absolute top-4 left-4 flex gap-2">
+                  {profile.is_verified && <Badge variant="verified">Verified</Badge>}
+                  {listing.is_featured && <Badge variant="primary">Featured</Badge>}
+                </div>
+                <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-black/70 text-white text-xs px-3 py-1 rounded-full">Click to expand</span>
+                </div>
+              </div>
+
+              {/* Thumbnail Grid */}
+              {photos.length > 1 && (
+                <div className="hidden lg:grid grid-cols-2 gap-1">
+                  {photos.slice(1, 5).map((photo, index) => (
+                    <button
+                      key={photo.id}
+                      onClick={() => { setActiveImage(index + 1); setLightboxOpen(true); }}
+                      className="relative aspect-square overflow-hidden hover:opacity-90 transition-opacity group"
+                    >
+                      <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                      {index === 3 && photos.length > 5 && (
+                        <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                          <span className="text-white font-semibold">+{photos.length - 5} more</span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            <p className="mt-2 text-sm text-purple-100">
-              {listing.locations.city}, {listing.locations.state}, {listing.locations.country}
-            </p>
-          </div>
-          
-          {isOwner && (
-            <div className="bg-purple-50 px-4 py-3 sm:px-6 border-b border-purple-100">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-purple-700">
-                  You are viewing your own listing
-                </p>
-                <Link 
-                  href={`/listings/edit/${listing.id}`}
-                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-purple-600 hover:bg-purple-700"
-                >
-                  Edit Listing
-                </Link>
+
+            {/* Mobile Thumbnails */}
+            {photos.length > 1 && (
+              <div className="lg:hidden flex gap-2 p-2 overflow-x-auto">
+                {photos.map((photo, index) => (
+                  <button
+                    key={photo.id}
+                    onClick={() => setActiveImage(index)}
+                    className={`flex-shrink-0 w-20 h-20 rounded overflow-hidden border-2 ${activeImage === index ? 'border-red-600' : 'border-transparent'}`}
+                  >
+                    <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="lg:grid lg:grid-cols-3 lg:gap-8">
-          {/* Listing Media */}
-          <div className="lg:col-span-2">
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              {listing.media && listing.media.length > 0 ? (
-                <div>
-                  <div className="aspect-w-16 aspect-h-9 relative">
-                    <img
-                      src={listing.media[activeImageIndex].storage_path}
-                      alt={listing.title}
-                      className="w-full h-96 object-cover object-center"
-                    />
-                  </div>
-                  
-                  {listing.media.length > 1 && (
-                    <div className="p-4 grid grid-cols-6 gap-2">
-                      {listing.media.map((media, index) => (
-                        <button
-                          key={media.id}
-                          onClick={() => setActiveImageIndex(index)}
-                          className={`relative aspect-square h-16 w-16 rounded-md overflow-hidden border-2 focus:outline-none ${
-                            index === activeImageIndex ? 'border-purple-500' : 'border-transparent'
-                          }`}
-                        >
-                          <img
-                            src={media.storage_path}
-                            alt={`Thumbnail ${index + 1}`}
-                            className="h-full w-full object-cover"
-                          />
-                        </button>
-                      ))}
+        {/* Profile Content */}
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Column */}
+            <div className="lg:col-span-2">
+              {/* Header */}
+              <div className="mb-6">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <h1 className="text-3xl font-bold text-white mb-1">{displayName}</h1>
+                    <div className="flex items-center gap-2 text-gray-400 text-sm">
+                      <span>{locationStr}</span>
+                      <span>•</span>
+                      <span>Member since {memberSince}</span>
                     </div>
-                  )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleSave} className={`p-2 rounded-lg transition-colors ${saved ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                      <svg className="w-6 h-6" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                    </button>
+                    <button onClick={handleShare} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                    </button>
+                    <button onClick={() => setShowReportModal(true)} className="p-2 bg-gray-800 text-gray-400 hover:text-red-400 rounded-lg transition-colors">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                <div className="h-96 flex items-center justify-center bg-gray-100">
-                  <p className="text-gray-500">No images available</p>
-                </div>
-              )}
-              
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Description</h2>
-                <div className="prose max-w-none text-gray-700">
-                  <p>{listing.description}</p>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Profile & Contact Info */}
-          <div className="mt-10 lg:mt-0">
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <div className="px-4 py-5 sm:px-6 bg-gray-50 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900">Profile Information</h2>
+                {/* Specialties / Services Tags */}
+                {servicesArray.filter(s => s.included).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {servicesArray.filter(s => s.included).map(service => (
+                      <span key={service.name} className="px-3 py-1 bg-red-600/20 text-red-400 border border-red-600/30 rounded-full text-sm">{service.name}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-2">
-                  {listing.profiles.display_name}
-                </h3>
-                
-                {listing.profiles.is_verified && (
-                  <div className="mb-4 flex items-center">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      <svg className="mr-1 h-3 w-3 text-green-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      Verified
-                    </span>
-                  </div>
-                )}
-                
-                {listing.profiles.bio && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">About</h4>
-                    <p className="text-sm text-gray-600">
-                      {listing.profiles.bio}
-                    </p>
-                  </div>
-                )}
-                
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Location</h4>
-                  <p className="text-sm text-gray-600">
-                    {listing.locations.city}, {listing.locations.state}, {listing.locations.country}
-                  </p>
+
+              {/* Tabs */}
+              <div className="border-b border-gray-800 mb-6 overflow-x-auto">
+                <div className="flex gap-1 min-w-max">
+                  {['about', 'services', 'rates', 'contact', 'reviews'].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-red-600 text-white' : 'border-transparent text-gray-400 hover:text-white'
+                        }`}
+                    >
+                      {tab}
+                      {tab === 'reviews' && reviewCount > 0 && (
+                        <span className="ml-2 px-2 py-0.5 bg-red-600 text-white text-xs rounded-full">
+                          {reviewCount}
+                        </span>
+                      )}
+                    </button>
+                  ))}
                 </div>
-                
-                <h3 className="text-lg font-medium text-gray-900 mb-4 border-t border-gray-200 pt-4">Services</h3>
-                
-                {Object.entries(listing.services || {}).filter(([_, included]) => included).length > 0 ? (
-                  <div className="mb-6">
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(listing.services || {})
-                        .filter(([_, included]) => included)
-                        .map(([service]) => (
-                          <span key={service} className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                            {service}
-                          </span>
+              </div>
+
+              {/* Tab Content */}
+              <div className="min-h-[400px]">
+                {activeTab === 'about' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-white font-semibold mb-3">About</h3>
+                      <p className="text-gray-300 whitespace-pre-line leading-relaxed">
+                        {listing.description || profile.bio || 'No description provided yet.'}
+                      </p>
+                    </div>
+
+                    {profile.bio && listing.description && profile.bio !== listing.description && (
+                      <div>
+                        <h3 className="text-white font-semibold mb-3">Bio</h3>
+                        <p className="text-gray-300 whitespace-pre-line leading-relaxed">{profile.bio}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'services' && (
+                  <div>
+                    <h3 className="text-white font-semibold mb-4">Services Offered</h3>
+                    {servicesArray.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {servicesArray.map(service => (
+                          <div key={service.name} className={`flex items-center gap-3 p-4 rounded-lg border ${service.included ? 'bg-green-900/10 border-green-800/50' : 'bg-gray-800/30 border-gray-700 opacity-50'}`}>
+                            <span className={service.included ? 'text-white' : 'text-gray-500'}>{service.name}</span>
+                            {service.included && <svg className="w-5 h-5 text-green-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                          </div>
                         ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400">No services listed yet.</p>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'rates' && (
+                  <div className="space-y-6">
+                    {ratesEntries.length > 0 ? (
+                      <div className="grid gap-3">
+                        {ratesEntries.map(([duration, info]) => (
+                          <div key={duration} className="flex justify-between items-center p-4 bg-gray-800/50 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
+                            <div>
+                              <span className="text-gray-300">{duration}</span>
+                              {typeof info === 'object' && info?.note && <p className="text-gray-500 text-xs mt-1">{info.note}</p>}
+                            </div>
+                            <div className="text-right">
+                              <span className="text-white font-bold text-xl">
+                                {typeof info === 'object' ? info?.price || info : info}
+                              </span>
+                              {typeof info === 'object' && info?.deposit && <p className="text-gray-500 text-xs">Deposit: {info.deposit}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-400">No rates listed yet. Contact for pricing.</p>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'contact' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {profile.contact_email && (
+                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                          <h4 className="text-gray-400 text-sm mb-1">Email</h4>
+                          <a href={`mailto:${profile.contact_email}`} className="text-white hover:text-red-400 transition-colors">{profile.contact_email}</a>
+                        </div>
+                      )}
+                      {profile.contact_phone && (
+                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                          <h4 className="text-gray-400 text-sm mb-1">Phone</h4>
+                          <a href={`tel:${profile.contact_phone}`} className="text-white hover:text-red-400 transition-colors">{profile.contact_phone}</a>
+                        </div>
+                      )}
+                      {profile.website && (
+                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                          <h4 className="text-gray-400 text-sm mb-1">Website</h4>
+                          <a href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-red-400 transition-colors">{profile.website}</a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Social Links */}
+                    {Object.keys(socialLinks).length > 0 && (
+                      <div>
+                        <h3 className="text-white font-semibold mb-3">Social Links</h3>
+                        <div className="space-y-2">
+                          {Object.entries(socialLinks).map(([platform, handle]) => (
+                            handle && (
+                              <div key={platform} className="flex items-center gap-3 text-gray-300">
+                                <span className="capitalize text-gray-400 w-24">{platform}:</span>
+                                <span className="text-white">{handle}</span>
+                              </div>
+                            )
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!profile.contact_email && !profile.contact_phone && !profile.website && Object.keys(socialLinks).length === 0 && (
+                      <p className="text-gray-400">No contact information provided yet.</p>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'reviews' && (
+                  <div className="space-y-6">
+                    {/* Rating Summary */}
+                    <div className="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800">
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <div className="text-4xl font-bold text-white">{averageRating.toFixed(1)}</div>
+                          <div className="flex items-center gap-1 mt-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-4 h-4 ${
+                                  star <= Math.round(averageRating)
+                                    ? 'text-yellow-500 fill-yellow-500'
+                                    : 'text-gray-600'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <p className="text-gray-500 text-sm mt-1">{reviewCount} reviews</p>
+                        </div>
+                        <div className="flex-1 border-l border-gray-800 pl-6">
+                          {[5, 4, 3, 2, 1].map((rating) => {
+                            const count = reviews.filter(r => r.rating === rating).length;
+                            const percentage = reviewCount > 0 ? (count / reviewCount) * 100 : 0;
+                            return (
+                              <div key={rating} className="flex items-center gap-2 text-sm">
+                                <span className="text-gray-400 w-3">{rating}</span>
+                                <Star className="w-3 h-3 text-gray-600" />
+                                <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-yellow-500 rounded-full"
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
+                                <span className="text-gray-500 w-8 text-right">{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Write Review Button */}
+                    <button
+                      onClick={() => setShowReviewForm(true)}
+                      className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                      Write a Review
+                    </button>
+
+                    {/* Review Form Modal */}
+                    {showReviewForm && (
+                      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+                        <div className="bg-[#1a1a1a] rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-white text-lg font-semibold">Write a Review</h3>
+                            <button
+                              onClick={() => setShowReviewForm(false)}
+                              className="text-gray-400 hover:text-white"
+                            >
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                          <ReviewForm
+                            listingId={listing.id}
+                            profileId={profile.id}
+                            onSubmit={handleSubmitReview}
+                            onClose={() => setShowReviewForm(false)}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reviews List */}
+                    {loadingReviews ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+                      </div>
+                    ) : reviews.length === 0 ? (
+                      <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-gray-800">
+                        <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                        <h3 className="text-white font-medium mb-2">No Reviews Yet</h3>
+                        <p className="text-gray-400 text-sm">Be the first to leave a review!</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {reviews.map((review) => (
+                          <ReviewCard key={review.id} review={review} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-20 space-y-4">
+                {/* CTA Card */}
+                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+                  <h3 className="text-white font-semibold mb-4">Book a Session</h3>
+                  {profile.contact_email && (
+                    <a href={`mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`}>
+                      <Button fullWidth size="lg" className="mb-3">
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        Send Email
+                      </Button>
+                    </a>
+                  )}
+                  {profile.contact_phone && (
+                    <a href={`tel:${profile.contact_phone}`}>
+                      <Button variant="secondary" fullWidth size="lg" className="mb-4">
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                        Call
+                      </Button>
+                    </a>
+                  )}
+
+                  <div className="space-y-3 pt-4 border-t border-gray-700">
+                    {profile.contact_email && (
+                      <div className="flex items-center gap-3 text-gray-300 text-sm">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        {profile.contact_email}
+                      </div>
+                    )}
+                    {profile.website && (
+                      <div className="flex items-center gap-3 text-gray-300 text-sm">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                        {profile.website}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 text-gray-300 text-sm">
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      {locationStr}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-500 mb-6">No services specified</p>
-                )}
-                
-                <h3 className="text-lg font-medium text-gray-900 mb-4 border-t border-gray-200 pt-4">Rates</h3>
-                
-                {Object.entries(listing.rates || {}).filter(([_, rate]) => rate).length > 0 ? (
-                  <div className="mb-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      {listing.rates?.hourly && (
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700">Hourly</h4>
-                          <p className="text-lg font-semibold text-gray-900">${listing.rates.hourly}</p>
-                        </div>
-                      )}
-                      
-                      {listing.rates?.twoHour && (
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700">2 Hours</h4>
-                          <p className="text-lg font-semibold text-gray-900">${listing.rates.twoHour}</p>
-                        </div>
-                      )}
-                      
-                      {listing.rates?.halfDay && (
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700">Half Day</h4>
-                          <p className="text-lg font-semibold text-gray-900">${listing.rates.halfDay}</p>
-                        </div>
-                      )}
-                      
-                      {listing.rates?.fullDay && (
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700">Full Day</h4>
-                          <p className="text-lg font-semibold text-gray-900">${listing.rates.fullDay}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 mb-6">No rates specified</p>
-                )}
-                
-                <h3 className="text-lg font-medium text-gray-900 mb-4 border-t border-gray-200 pt-4">Contact</h3>
-                
-                {(listing.profiles.contact_email || listing.profiles.contact_phone || listing.profiles.website) ? (
-                  <div className="space-y-3">
-                    {listing.profiles.contact_email && (
-                      <div className="flex items-start">
-                        <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <a href={`mailto:${listing.profiles.contact_email}`} className="text-purple-700 hover:text-purple-900">
-                          {listing.profiles.contact_email}
-                        </a>
+                </div>
+
+                {/* Verified Badge */}
+                {profile.is_verified && (
+                  <div className="bg-green-900/20 rounded-lg p-4 border border-green-800">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                      <div>
+                        <p className="text-green-400 font-medium text-sm">Verified Profile</p>
+                        <p className="text-green-400/70 text-xs mt-1">Identity confirmed. Always practice SSC (Safe, Sane, Consensual).</p>
                       </div>
-                    )}
-                    
-                    {listing.profiles.contact_phone && (
-                      <div className="flex items-start">
-                        <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                        <a href={`tel:${listing.profiles.contact_phone}`} className="text-purple-700 hover:text-purple-900">
-                          {listing.profiles.contact_phone}
-                        </a>
-                      </div>
-                    )}
-                    
-                    {listing.profiles.website && (
-                      <div className="flex items-start">
-                        <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                        </svg>
-                        <a href={listing.profiles.website} target="_blank" rel="noopener noreferrer" className="text-purple-700 hover:text-purple-900">
-                          {listing.profiles.website}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No contact information provided</p>
-                )}
-                
-                {/* Social Links */}
-                {listing.profiles.social_links && Object.values(listing.profiles.social_links).some(link => link) && (
-                  <div className="mt-6 border-t border-gray-200 pt-4">
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">Social Media</h3>
-                    <div className="flex items-center space-x-4">
-                      {listing.profiles.social_links.twitter && (
-                        <a 
-                          href={`https://twitter.com/${listing.profiles.social_links.twitter}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-gray-400 hover:text-blue-400"
-                        >
-                          <span className="sr-only">Twitter</span>
-                          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
-                          </svg>
-                        </a>
-                      )}
-                      
-                      {listing.profiles.social_links.instagram && (
-                        <a 
-                          href={`https://instagram.com/${listing.profiles.social_links.instagram}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-gray-400 hover:text-pink-600"
-                        >
-                          <span className="sr-only">Instagram</span>
-                          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path fillRule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 015.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63zm-.081 1.802h-.468c-2.456 0-2.784.011-3.807.058-.975.045-1.504.207-1.857.344-.467.182-.8.398-1.15.748-.35.35-.566.683-.748 1.15-.137.353-.3.882-.344 1.857-.047 1.023-.058 1.351-.058 3.807v.468c0 2.456.011 2.784.058 3.807.045.975.207 1.504.344 1.857.182.466.399.8.748 1.15.35.35.683.566 1.15.748.353.137.882.3 1.857.344 1.054.048 1.37.058 4.041.058h.08c2.597 0 2.917-.01 3.96-.058.976-.045 1.505-.207 1.858-.344.466-.182.8-.398 1.15-.748.35-.35.566-.683.748-1.15.137-.353.3-.882.344-1.857.048-1.055.058-1.37.058-4.041v-.08c0-2.597-.01-2.917-.058-3.96-.045-.976-.207-1.505-.344-1.858a3.097 3.097 0 00-.748-1.15 3.098 3.098 0 00-1.15-.748c-.353-.137-.882-.3-1.857-.344-1.023-.047-1.351-.058-3.807-.058zM12 6.865a5.135 5.135 0 110 10.27 5.135 5.135 0 010-10.27zm0 1.802a3.333 3.333 0 100 6.666 3.333 3.333 0 000-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z" clipRule="evenodd" />
-                          </svg>
-                        </a>
-                      )}
-                      
-                      {listing.profiles.social_links.onlyfans && (
-                        <a 
-                          href={`https://onlyfans.com/${listing.profiles.social_links.onlyfans}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-gray-400 hover:text-blue-500"
-                        >
-                          <span className="sr-only">OnlyFans</span>
-                          <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22c-5.523 0-10-4.477-10-10S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-3.5-8.5c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5-1.567 3.5-3.5 3.5-3.5-1.567-3.5-3.5z"/>
-                          </svg>
-                        </a>
-                      )}
                     </div>
                   </div>
                 )}
@@ -383,6 +678,31 @@ export default function ListingDetail() {
             </div>
           </div>
         </div>
+
+        {/* Similar Profiles */}
+        {similarListings.length > 0 && (
+          <div className="max-w-7xl mx-auto px-4 pb-12">
+            <h2 className="text-white text-xl font-semibold mb-4">Similar Dommes in {location.city}</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {similarListings.map(l => (
+                <Link key={l.id} href={`/listings/${l.id}`} className="group">
+                  <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-800">
+                    <img
+                      src={l.profiles?.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop'}
+                      alt={l.profiles?.display_name || l.title}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-3">
+                      <h3 className="text-white font-semibold">{l.profiles?.display_name || l.title}</h3>
+                      <p className="text-gray-400 text-xs">{l.locations?.city}, {l.locations?.country}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

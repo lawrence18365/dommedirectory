@@ -1,19 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
+import { useUser } from '@supabase/auth-helpers-react';
 import Layout from '../../../components/layout/Layout';
+import Link from 'next/link';
 import { getAllLocations } from '../../../services/locations';
 import { createListing, uploadListingMedia } from '../../../services/listings';
 import { getProfile } from '../../../services/profiles';
 import { PRICES, createCheckoutSession } from '../../../services/payments';
 import { getStripe } from '../../../utils/stripe';
+import { validateListingData, sanitizeString } from '../../../utils/validation';
 
 export default function CreateListing() {
   const router = useRouter();
-  const supabase = useSupabaseClient();
   const user = useUser();
-  
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -21,6 +22,7 @@ export default function CreateListing() {
   const [locations, setLocations] = useState([]);
   const [profile, setProfile] = useState(null);
   const [uploadedMedia, setUploadedMedia] = useState([]);
+  const [mediaPreviewUrls, setMediaPreviewUrls] = useState([]);
   const [primaryMediaIndex, setPrimaryMediaIndex] = useState(0);
   const [listingFeatures, setListingFeatures] = useState({
     isFeatured: false,
@@ -51,7 +53,7 @@ export default function CreateListing() {
         const { profile: profileData, error: profileError } = await getProfile(user.id);
         if (profileError) throw profileError;
         setProfile(profileData);
-        
+
         // Set default location to profile's primary location
         if (profileData?.primary_location_id) {
           setFormData(prev => ({
@@ -75,9 +77,18 @@ export default function CreateListing() {
     loadInitialData();
   }, [user, router]);
 
+  // Cleanup object URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      mediaPreviewUrls.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, []); // Empty dependency array - only run on unmount
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name.startsWith('rates.')) {
       const rateKey = name.split('.')[1];
       setFormData({
@@ -90,7 +101,7 @@ export default function CreateListing() {
     } else if (name.startsWith('services.')) {
       const serviceKey = name.split('.')[1];
       const isChecked = e.target.checked;
-      
+
       setFormData({
         ...formData,
         services: {
@@ -116,18 +127,22 @@ export default function CreateListing() {
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
-      
+
       // Filter files (only images, max size check, etc.)
-      const validFiles = newFiles.filter(file => 
+      const validFiles = newFiles.filter(file =>
         file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024
       );
-      
+
       if (validFiles.length !== newFiles.length) {
         setError('Some files were not added. Files must be images under 5MB.');
       }
-      
+
+      // Create preview URLs for valid files
+      const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+
       setUploadedMedia(prev => [...prev, ...validFiles]);
-      
+      setMediaPreviewUrls(prev => [...prev, ...newPreviewUrls]);
+
       // Set the first uploaded file as primary if no primary is set
       if (uploadedMedia.length === 0 && validFiles.length > 0) {
         setPrimaryMediaIndex(0);
@@ -135,16 +150,22 @@ export default function CreateListing() {
     }
   };
 
-  const removeMedia = (index) => {
+  const removeMedia = useCallback((index) => {
+    // Revoke the object URL to prevent memory leak
+    if (mediaPreviewUrls[index]) {
+      URL.revokeObjectURL(mediaPreviewUrls[index]);
+    }
+
     setUploadedMedia(prev => prev.filter((_, i) => i !== index));
-    
+    setMediaPreviewUrls(prev => prev.filter((_, i) => i !== index));
+
     // Update primary media index if necessary
     if (primaryMediaIndex === index) {
       setPrimaryMediaIndex(0);
     } else if (primaryMediaIndex > index) {
       setPrimaryMediaIndex(prev => prev - 1);
     }
-  };
+  }, [mediaPreviewUrls, primaryMediaIndex]);
 
   const setPrimaryMedia = (index) => {
     setPrimaryMediaIndex(index);
@@ -152,28 +173,30 @@ export default function CreateListing() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!formData.title || !formData.description || !formData.locationId) {
-      setError('Please fill out all required fields.');
+
+    // Validate form data
+    const validation = validateListingData(formData);
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
       return;
     }
-    
+
     setError(null);
     setSuccess(false);
     setSubmitting(true);
-    
+
     try {
-      // Create the listing
+      // Sanitize and create the listing
       const { listing, error: createError } = await createListing(user.id, {
-        title: formData.title,
-        description: formData.description,
+        title: sanitizeString(formData.title, 200),
+        description: sanitizeString(formData.description, 5000),
         locationId: formData.locationId,
         services: formData.services,
         rates: formData.rates,
       });
-      
+
       if (createError) throw createError;
-      
+
       // Upload media files if any
       if (uploadedMedia.length > 0) {
         for (let i = 0; i < uploadedMedia.length; i++) {
@@ -181,7 +204,7 @@ export default function CreateListing() {
           await uploadListingMedia(listing.id, user.id, uploadedMedia[i], isPrimary);
         }
       }
-      
+
       // Redirect to payment if listing should be featured
       if (listingFeatures.isFeatured) {
         const { sessionId, error: paymentError } = await createCheckoutSession(
@@ -190,21 +213,21 @@ export default function CreateListing() {
           PRICES.FEATURED_LISTING,
           true
         );
-        
+
         if (paymentError) throw paymentError;
-        
+
         // Redirect to Stripe checkout
         const stripe = await getStripe();
         const { error: stripeError } = await stripe.redirectToCheckout({
           sessionId,
         });
-        
+
         if (stripeError) throw stripeError;
       } else {
         // Just redirect to the newly created listing
         router.push(`/listings/${listing.id}`);
       }
-      
+
       setSuccess(true);
     } catch (error) {
       console.error('Error creating listing:', error);
@@ -218,7 +241,30 @@ export default function CreateListing() {
     return (
       <Layout>
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-900"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-900"></div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Check if profile is loaded - allow all users to create listings
+  if (!loading && !profile) {
+    return (
+      <Layout>
+        <Head>
+          <title>Error | DommeDirectory</title>
+        </Head>
+        <div className="max-w-2xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">Unable to Load Profile</h1>
+          <p className="text-lg text-gray-400 mb-6">
+            Please try logging in again.
+          </p>
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700"
+          >
+            Go to Login
+          </Link>
         </div>
       </Layout>
     );
@@ -233,22 +279,22 @@ export default function CreateListing() {
 
       <div className="max-w-5xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-4 py-5 sm:px-6 bg-purple-700 text-white">
+          <div className="bg-[#1a1a1a] shadow rounded-lg overflow-hidden border border-white/5">
+            <div className="px-4 py-5 sm:px-6 bg-[#262626] border-b border-white/5 text-white">
               <h1 className="text-xl font-bold">Create New Listing</h1>
-              <p className="mt-1 text-sm">
+              <p className="mt-1 text-sm text-gray-400">
                 Complete the form below to create your listing
               </p>
             </div>
 
             {error && (
-              <div className="px-4 py-3 sm:px-6 bg-red-50 text-red-700 border-b border-red-200">
+              <div className="px-4 py-3 sm:px-6 bg-red-900/20 text-red-200 border-b border-red-500/30">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="px-4 py-3 sm:px-6 bg-green-50 text-green-700 border-b border-green-200">
+              <div className="px-4 py-3 sm:px-6 bg-green-900/20 text-green-200 border-b border-green-500/30">
                 Listing created successfully!
               </div>
             )}
@@ -256,10 +302,10 @@ export default function CreateListing() {
             <form onSubmit={handleSubmit} className="px-4 py-5 sm:p-6 space-y-6">
               {/* Basic Information */}
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Basic Information</h2>
+                <h2 className="text-lg font-medium text-white">Basic Information</h2>
                 <div className="mt-4 grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-4">
                   <div className="sm:col-span-2">
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="title" className="block text-sm font-medium text-gray-300">
                       Listing Title <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -269,12 +315,12 @@ export default function CreateListing() {
                       value={formData.title}
                       onChange={handleChange}
                       required
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                      className="mt-1 block w-full bg-[#262626] border border-white/10 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="description" className="block text-sm font-medium text-gray-300">
                       Description <span className="text-red-500">*</span>
                     </label>
                     <textarea
@@ -284,13 +330,13 @@ export default function CreateListing() {
                       value={formData.description}
                       onChange={handleChange}
                       required
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                      className="mt-1 block w-full bg-[#262626] border border-white/10 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                       placeholder="Describe your services, experience, and what clients can expect..."
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="locationId" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="locationId" className="block text-sm font-medium text-gray-300">
                       Location <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -299,7 +345,7 @@ export default function CreateListing() {
                       value={formData.locationId}
                       onChange={handleChange}
                       required
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                      className="mt-1 block w-full bg-[#262626] border border-white/10 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                     >
                       <option value="">Select a location</option>
                       {locations.map((location) => (
@@ -314,20 +360,20 @@ export default function CreateListing() {
 
               {/* Media Upload */}
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Photos & Videos</h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  Upload images to showcase your services. The first image will be your listing's main image.
+                <h2 className="text-lg font-medium text-white">Photos & Videos</h2>
+                <p className="mt-1 text-sm text-gray-400">
+                  Upload images to showcase your services. The first image will be your listing&apos;s main image.
                 </p>
-                
+
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700">Upload Media</label>
-                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                  <label className="block text-sm font-medium text-gray-300">Upload Media</label>
+                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-white/10 border-dashed rounded-md hover:border-red-500/50 transition-colors">
                     <div className="space-y-1 text-center">
-                      <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                      <svg className="mx-auto h-12 w-12 text-gray-500" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                         <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
-                      <div className="flex text-sm text-gray-600">
-                        <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-purple-600 hover:text-purple-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500">
+                      <div className="flex text-sm text-gray-400 justify-center">
+                        <label htmlFor="file-upload" className="relative cursor-pointer bg-[#262626] rounded-md font-medium text-red-500 hover:text-red-400 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-red-500 px-2">
                           <span>Upload files</span>
                           <input
                             id="file-upload"
@@ -347,13 +393,13 @@ export default function CreateListing() {
                     </div>
                   </div>
                 </div>
-                
+
                 {uploadedMedia.length > 0 && (
                   <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                     {uploadedMedia.map((file, index) => (
-                      <div key={index} className={`relative group border rounded-md overflow-hidden ${index === primaryMediaIndex ? 'ring-2 ring-purple-500' : ''}`}>
+                      <div key={index} className={`relative group border border-white/10 rounded-md overflow-hidden ${index === primaryMediaIndex ? 'ring-2 ring-red-500' : ''}`}>
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={mediaPreviewUrls[index]}
                           alt={`Upload ${index + 1}`}
                           className="h-32 w-full object-cover"
                         />
@@ -361,7 +407,7 @@ export default function CreateListing() {
                           <button
                             type="button"
                             onClick={() => setPrimaryMedia(index)}
-                            className="p-1 bg-purple-500 text-white rounded-full mx-1"
+                            className="p-1 bg-red-600 text-white rounded-full mx-1 hover:bg-red-700"
                             title="Set as primary"
                           >
                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -371,7 +417,7 @@ export default function CreateListing() {
                           <button
                             type="button"
                             onClick={() => removeMedia(index)}
-                            className="p-1 bg-red-500 text-white rounded-full mx-1"
+                            className="p-1 bg-red-800 text-white rounded-full mx-1 hover:bg-red-900"
                             title="Remove"
                           >
                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -380,7 +426,7 @@ export default function CreateListing() {
                           </button>
                         </div>
                         {index === primaryMediaIndex && (
-                          <div className="absolute top-0 left-0 bg-purple-500 text-white text-xs px-2 py-1">
+                          <div className="absolute top-0 left-0 bg-red-600 text-white text-xs px-2 py-1">
                             Primary
                           </div>
                         )}
@@ -392,13 +438,13 @@ export default function CreateListing() {
 
               {/* Services Offered */}
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Services Offered</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-lg font-medium text-white">Services Offered</h2>
+                <p className="mt-1 text-sm text-gray-400">
                   Select the services you offer for this listing
                 </p>
                 <div className="mt-4 grid grid-cols-1 gap-y-2 sm:grid-cols-2 gap-x-4">
                   {[
-                    'Bondage', 'Discipline', 'Domination', 'Submission', 'Sadism', 
+                    'Bondage', 'Discipline', 'Domination', 'Submission', 'Sadism',
                     'Masochism', 'Roleplay', 'Fetish', 'CBT', 'Spanking', 'Humiliation',
                     'Foot Worship', 'Pegging', 'Financial Domination', 'Sissy Training'
                   ].map((service) => (
@@ -410,11 +456,11 @@ export default function CreateListing() {
                           type="checkbox"
                           checked={formData.services[service] || false}
                           onChange={handleChange}
-                          className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                          className="h-4 w-4 text-red-600 border-gray-600 rounded bg-[#262626] focus:ring-red-500 focus:ring-offset-[#1a1a1a]"
                         />
                       </div>
                       <div className="ml-3 text-sm">
-                        <label htmlFor={`service-${service}`} className="font-medium text-gray-700">
+                        <label htmlFor={`service-${service}`} className="font-medium text-gray-300">
                           {service}
                         </label>
                       </div>
@@ -425,14 +471,14 @@ export default function CreateListing() {
 
               {/* Rates */}
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Rates</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-lg font-medium text-white">Rates</h2>
+                <p className="mt-1 text-sm text-gray-400">
                   Set your rates for different session lengths
                 </p>
-                
+
                 <div className="mt-4 grid grid-cols-1 gap-y-6 sm:grid-cols-2 gap-x-4">
                   <div>
-                    <label htmlFor="rates.hourly" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="rates.hourly" className="block text-sm font-medium text-gray-300">
                       Hourly Rate
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
@@ -445,14 +491,14 @@ export default function CreateListing() {
                         id="rates.hourly"
                         value={formData.rates.hourly}
                         onChange={handleChange}
-                        className="mt-1 block w-full pl-7 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                        className="mt-1 block w-full bg-[#262626] border border-white/10 pl-7 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                         placeholder="0.00"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label htmlFor="rates.twoHour" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="rates.twoHour" className="block text-sm font-medium text-gray-300">
                       2-Hour Rate
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
@@ -465,14 +511,14 @@ export default function CreateListing() {
                         id="rates.twoHour"
                         value={formData.rates.twoHour}
                         onChange={handleChange}
-                        className="mt-1 block w-full pl-7 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                        className="mt-1 block w-full bg-[#262626] border border-white/10 pl-7 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                         placeholder="0.00"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label htmlFor="rates.halfDay" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="rates.halfDay" className="block text-sm font-medium text-gray-300">
                       Half-Day Rate
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
@@ -485,14 +531,14 @@ export default function CreateListing() {
                         id="rates.halfDay"
                         value={formData.rates.halfDay}
                         onChange={handleChange}
-                        className="mt-1 block w-full pl-7 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                        className="mt-1 block w-full bg-[#262626] border border-white/10 pl-7 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                         placeholder="0.00"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label htmlFor="rates.fullDay" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="rates.fullDay" className="block text-sm font-medium text-gray-300">
                       Full-Day Rate
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
@@ -505,7 +551,7 @@ export default function CreateListing() {
                         id="rates.fullDay"
                         value={formData.rates.fullDay}
                         onChange={handleChange}
-                        className="mt-1 block w-full pl-7 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                        className="mt-1 block w-full bg-[#262626] border border-white/10 pl-7 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                         placeholder="0.00"
                       />
                     </div>
@@ -515,12 +561,12 @@ export default function CreateListing() {
 
               {/* Listing Features */}
               <div>
-                <h2 className="text-lg font-medium text-gray-900">Listing Features</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-lg font-medium text-white">Listing Features</h2>
+                <p className="mt-1 text-sm text-gray-400">
                   Enhance your listing visibility with premium features
                 </p>
-                
-                <div className="mt-4 bg-purple-50 p-4 rounded-md">
+
+                <div className="mt-4 bg-[#262626] p-4 rounded-md border border-white/5">
                   <div className="relative flex items-start">
                     <div className="flex items-center h-5">
                       <input
@@ -529,11 +575,11 @@ export default function CreateListing() {
                         type="checkbox"
                         checked={listingFeatures.isFeatured}
                         onChange={() => handleFeatureToggle('isFeatured')}
-                        className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                        className="h-4 w-4 text-red-600 border-gray-600 rounded bg-[#1a1a1a] focus:ring-red-500 focus:ring-offset-[#1a1a1a]"
                       />
                     </div>
                     <div className="ml-3 text-sm">
-                      <label htmlFor="feature-isFeatured" className="font-medium text-gray-700">
+                      <label htmlFor="feature-isFeatured" className="font-medium text-gray-300">
                         Featured Listing
                       </label>
                       <p className="text-gray-500">
@@ -550,14 +596,14 @@ export default function CreateListing() {
                   <button
                     type="button"
                     onClick={() => router.push('/dashboard')}
-                    className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                    className="bg-[#262626] py-2 px-4 border border-white/10 rounded-md shadow-sm text-sm font-medium text-gray-300 hover:bg-[#333] hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-700 hover:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                    className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
                   >
                     {submitting ? 'Creating...' : 'Create Listing'}
                   </button>

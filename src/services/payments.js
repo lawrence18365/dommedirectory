@@ -1,11 +1,11 @@
 import { supabase } from '../utils/supabase';
 import { loadStripe } from '@stripe/stripe-js';
 
-// Prices for different services (should match Stripe products)
+// Prices for different services (loaded from environment variables)
 export const PRICES = {
-  BASIC_LISTING: 'price_basic', // Replace with actual price ID from Stripe
-  FEATURED_LISTING: 'price_featured', // Replace with actual price ID from Stripe
-  VERIFICATION: 'price_verification', // Replace with actual price ID from Stripe
+  BASIC_LISTING: process.env.NEXT_PUBLIC_STRIPE_BASIC_LISTING_PRICE_ID || 'price_basic',
+  FEATURED_LISTING: process.env.NEXT_PUBLIC_STRIPE_FEATURED_LISTING_PRICE_ID || 'price_featured',
+  VERIFICATION: process.env.NEXT_PUBLIC_STRIPE_VERIFICATION_PRICE_ID || 'price_verification',
 };
 
 /**

@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { supabase } from '../../../utils/supabase';
+import { applyRateLimit } from '../../../utils/rateLimit';
 
 // Initialize Stripe with your secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -8,6 +9,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Apply rate limiting: 10 requests per minute for payment creation
+  const allowed = applyRateLimit(req, res, {
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 10,
+  });
+  
+  if (!allowed) return;
 
   try {
     const { profileId, listingId, priceId, isFeatured = false } = req.body;

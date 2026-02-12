@@ -25,10 +25,10 @@ export default function Blog() {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8 md:px-6 lg:px-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold mb-8 text-gray-800 border-b-4 border-purple-600 pb-3">Our Blog</h1>
+        <h1 className="text-4xl md:text-5xl font-extrabold mb-8 text-gray-800 border-b-4 border-red-600 pb-3">Our Blog</h1>
         {loading && (
           <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-red-600"></div>
           </div>
         )}
         {!loading && posts.length === 0 && (
@@ -49,13 +49,13 @@ export default function Blog() {
                 )}
                 <div className="p-6 flex flex-col flex-grow">
                   <Link href={`/blog/${post.slug}`} legacyBehavior>
-                    <a className="block mt-1 text-xl leading-tight font-bold text-gray-900 hover:text-purple-700 transition duration-150 ease-in-out">
+                    <a className="block mt-1 text-xl leading-tight font-bold text-gray-900 hover:text-red-700 transition duration-150 ease-in-out">
                       {post.title}
                     </a>
                   </Link>
                   <p className="mt-3 text-gray-600 text-base flex-grow">{post.excerpt}</p>
                   <Link href={`/blog/${post.slug}`} legacyBehavior>
-                    <a className="inline-block mt-4 text-purple-600 hover:text-purple-800 font-semibold group">
+                    <a className="inline-block mt-4 text-red-600 hover:text-red-800 font-semibold group">
                       Read more <span className="transition-transform duration-150 ease-in-out group-hover:translate-x-1">&rarr;</span>
                     </a>
                   </Link>
@@ -70,7 +70,7 @@ export default function Blog() {
             <button
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
               disabled={page === 1}
-              className="px-6 py-2 border border-purple-600 text-purple-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 hover:text-white transition duration-150 ease-in-out"
+              className="px-6 py-2 border border-red-600 text-red-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-600 hover:text-white transition duration-150 ease-in-out"
             >
               &larr; Previous
             </button>
@@ -79,7 +79,7 @@ export default function Blog() {
               onClick={() => setPage((p) => p + 1)}
               // Add a condition to disable 'Next' if there are likely no more posts
               // disabled={posts.length < 10} // Assuming pageSize is 10
-              className="px-6 py-2 border border-purple-600 text-purple-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600 hover:text-white transition duration-150 ease-in-out"
+              className="px-6 py-2 border border-red-600 text-red-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-600 hover:text-white transition duration-150 ease-in-out"
             >
               Next &rarr;
             </button>

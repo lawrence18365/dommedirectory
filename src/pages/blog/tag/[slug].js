@@ -21,7 +21,7 @@ export default function TagPage({ tag, posts }) {
         {posts.map((post) => (
           <li key={post.id} className="mb-4">
             <Link href={`/blog/${post.slug}`}>
-              <a className="text-xl font-semibold text-blue-600 hover:underline">{post.title}</a>
+              <a className="text-xl font-semibold text-red-600 hover:underline">{post.title}</a>
             </Link>
             <p>{post.excerpt}</p>
           </li>

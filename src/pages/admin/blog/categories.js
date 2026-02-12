@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
-import { fetchCategories, createCategory, updateCategory, deleteCategory } from '../../services/blog';
+import { useRouter } from 'next/router';
+import { fetchCategories, createCategory, updateCategory, deleteCategory } from '../../../services/blog';
+import { getCurrentUser } from '../../../services/auth';
 import { useForm } from 'react-hook-form';
 
 export default function AdminCategories() {
   const [categories, setCategories] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);
+  const router = useRouter();
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    const checkAuth = async () => {
+      const { user, error } = await getCurrentUser();
+      if (error || !user) {
+        router.push('/auth/login');
+        return;
+      }
+      loadCategories();
+    };
+    checkAuth();
+  }, [router]);
 
   const loadCategories = async () => {
     const cats = await fetchCategories();
@@ -70,7 +81,7 @@ export default function AdminCategories() {
           <textarea {...register('description')} rows={3} className="w-full border border-gray-300 rounded px-3 py-2" />
         </div>
         <div>
-          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded mr-2">
+          <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded mr-2">
             {editingCategory ? 'Update Category' : 'Create Category'}
           </button>
           {editingCategory && (
@@ -87,7 +98,7 @@ export default function AdminCategories() {
               <strong>{cat.name}</strong> - {cat.description}
             </div>
             <div>
-              <button onClick={() => onEdit(cat)} className="text-blue-600 hover:underline mr-4">Edit</button>
+              <button onClick={() => onEdit(cat)} className="text-red-600 hover:underline mr-4">Edit</button>
               <button onClick={() => onDelete(cat.id)} className="text-red-600 hover:underline">Delete</button>
             </div>
           </li>

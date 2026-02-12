@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase';
+import { uploadProfilePicture } from './storage';
 
 /**
  * Get profile by ID
@@ -8,18 +9,17 @@ export const getProfile = async (profileId) => {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select(`*, locations!primary_location_id(id, city, state, country)`) // Restore the join
+      .select(`*, locations!primary_location_id(id, city, state, country)`)
       .eq('id', profileId)
-      .limit(1); // Fetch at most one row
+      .limit(1);
 
     if (error) {
-      // Don't throw if the error is just that no rows were found
       if (error.code === 'PGRST116') {
-        return { profile: null, error: null }; // No profile found is not an error here
+        return { profile: null, error: null };
       }
-      throw error; // Rethrow other errors
+      throw error;
     }
-    return { profile: data.length > 0 ? data[0] : null, error: null }; // Return the first profile or null
+    return { profile: data.length > 0 ? data[0] : null, error: null };
   } catch (error) {
     console.error('Error fetching profile:', error.message);
     return { profile: null, error };
@@ -58,9 +58,60 @@ export const updateProfile = async (profileId, profileData) => {
 };
 
 /**
+ * Update profile picture
+ * @param {string} profileId 
+ * @param {File} file 
+ */
+export const updateProfilePicture = async (profileId, file) => {
+  try {
+    const { url, error } = await uploadProfilePicture(profileId, file);
+    if (error) throw error;
+
+    // Update profile with new picture URL
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ profile_picture_url: url })
+      .eq('id', profileId);
+
+    if (updateError) throw updateError;
+    return { url, error: null };
+  } catch (error) {
+    console.error('Error updating profile picture:', error.message);
+    return { url: null, error };
+  }
+};
+
+/**
+ * Mark profile as verified after successful payment
+ * @param {string} profileId
+ */
+export const markProfileAsVerified = async (profileId) => {
+  try {
+    const expiryDate = new Date();
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_verified: true,
+        verification_expires_at: expiryDate.toISOString(),
+        updated_at: new Date(),
+      })
+      .eq('id', profileId);
+
+    if (error) throw error;
+    console.log(`Profile ${profileId} marked as verified until ${expiryDate.toISOString()}`);
+    return { error: null };
+  } catch (error) {
+    console.error(`Error marking profile ${profileId} as verified:`, error.message);
+    return { error };
+  }
+};
+
+/**
  * Submit verification documents
  * @param {string} profileId 
- * @param {Array} documentUrls - Array of file paths in storage
+ * @param {Array} documentUrls - Array of file URLs from storage
  */
 export const submitVerification = async (profileId, documentUrls) => {
   try {
@@ -98,7 +149,7 @@ export const checkVerificationStatus = async (profileId) => {
       .limit(1)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 is no rows returned
+    if (error && error.code !== 'PGRST116') {
       throw error;
     }
 
@@ -114,32 +165,11 @@ export const checkVerificationStatus = async (profileId) => {
 };
 
 /**
- * Upload profile picture
+ * Upload verification document
  * @param {string} profileId 
  * @param {File} file 
  */
-export const uploadProfilePicture = async (profileId, file) => {
-  try {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `profile_picture.${fileExt}`;
-    const filePath = `${profileId}/${fileName}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('listing_images')
-      .upload(filePath, file, {
-        upsert: true
-      });
-      
-    if (uploadError) throw uploadError;
-    
-    // Get the public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('listing_images')
-      .getPublicUrl(filePath);
-      
-    return { url: publicUrl, error: null };
-  } catch (error) {
-    console.error('Error uploading profile picture:', error.message);
-    return { url: null, error };
-  }
+export const uploadVerificationDocument = async (profileId, file) => {
+  const { uploadVerificationDocument: uploadDoc } = await import('./storage');
+  return uploadDoc(profileId, file);
 };

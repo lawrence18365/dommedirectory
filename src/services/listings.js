@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase';
+import { uploadListingMedia as uploadToStorage } from './storage';
 
 /**
  * Create a new listing
@@ -129,45 +130,44 @@ export const getListingsByProfile = async (profileId) => {
 /**
  * Upload media for a listing
  * @param {string} listingId 
- * @param {string} profileId 
  * @param {File} file 
  * @param {boolean} isPrimary - Whether this is the primary image
  */
-export const uploadListingMedia = async (listingId, profileId, file, isPrimary = false) => {
+export const uploadListingMedia = async (listingId, file, isPrimary = false) => {
+  return uploadMedia(listingId, file, isPrimary);
+};
+
+export const uploadMedia = async (listingId, file, isPrimary = false) => {
   try {
-    // 1. Upload file to storage
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-    const filePath = `${profileId}/${listingId}/${fileName}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('listing_images')
-      .upload(filePath, file);
-      
+    // Upload to Cloudflare or Supabase
+    const { url, error: uploadError } = await uploadToStorage(listingId, file);
     if (uploadError) throw uploadError;
-    
-    // 2. Get the public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('listing_images')
-      .getPublicUrl(filePath);
-      
-    // 3. Create a media record
+
+    // Get the current profile_id for this listing
+    const { data: listingData, error: listingError } = await supabase
+      .from('listings')
+      .select('profile_id')
+      .eq('id', listingId)
+      .single();
+
+    if (listingError) throw listingError;
+
+    // Create media record
     const { data: mediaData, error: mediaError } = await supabase
       .from('media')
       .insert([
         {
           listing_id: listingId,
-          profile_id: profileId,
-          storage_path: publicUrl,
+          storage_path: url,
           media_type: file.type.startsWith('image/') ? 'image' : 'video',
           is_primary: isPrimary
         }
       ])
       .select();
-      
+
     if (mediaError) throw mediaError;
-    
-    // 4. If this is primary, update any existing primary to not be primary
+
+    // If this is primary, update any existing primary to not be primary
     if (isPrimary) {
       await supabase
         .from('media')
@@ -175,7 +175,7 @@ export const uploadListingMedia = async (listingId, profileId, file, isPrimary =
         .eq('listing_id', listingId)
         .neq('id', mediaData[0].id);
     }
-    
+
     return { media: mediaData[0], error: null };
   } catch (error) {
     console.error('Error uploading media:', error.message);
@@ -189,7 +189,7 @@ export const uploadListingMedia = async (listingId, profileId, file, isPrimary =
  */
 export const deleteMedia = async (mediaId) => {
   try {
-    // 1. Get media record
+    // Get media record
     const { data: mediaData, error: fetchError } = await supabase
       .from('media')
       .select('*')
@@ -198,7 +198,7 @@ export const deleteMedia = async (mediaId) => {
       
     if (fetchError) throw fetchError;
     
-    // 2. Delete from database
+    // Delete from database
     const { error: deleteRecordError } = await supabase
       .from('media')
       .delete()
@@ -206,26 +206,47 @@ export const deleteMedia = async (mediaId) => {
       
     if (deleteRecordError) throw deleteRecordError;
     
-    // 3. Delete file from storage if possible
+    // Delete file from storage
     try {
-      const url = new URL(mediaData.storage_path);
-      const pathParts = url.pathname.split('/');
-      const fileName = pathParts[pathParts.length - 1];
-      const profileId = mediaData.profile_id;
-      const listingId = mediaData.listing_id;
-      const filePath = `${profileId}/${listingId}/${fileName}`;
-      
-      await supabase.storage
-        .from('listing_images')
-        .remove([filePath]);
+      const { getFilePathFromUrl } = await import('./storage');
+      const filePath = getFilePathFromUrl(mediaData.storage_path);
+      if (filePath) {
+        await supabase.storage.from('media').remove([filePath]);
+      }
     } catch (storageError) {
       console.error('Error deleting file from storage:', storageError);
-      // Continue even if storage delete fails
     }
     
     return { error: null };
   } catch (error) {
     console.error('Error deleting media:', error.message);
+    return { error };
+  }
+};
+
+/**
+ * Set primary media
+ * @param {string} listingId 
+ * @param {string} mediaId 
+ */
+export const setPrimaryMedia = async (listingId, mediaId) => {
+  try {
+    // Unset all primary for this listing
+    await supabase
+      .from('media')
+      .update({ is_primary: false })
+      .eq('listing_id', listingId);
+
+    // Set new primary
+    const { error } = await supabase
+      .from('media')
+      .update({ is_primary: true })
+      .eq('id', mediaId);
+
+    if (error) throw error;
+    return { error: null };
+  } catch (error) {
+    console.error('Error setting primary media:', error.message);
     return { error };
   }
 };

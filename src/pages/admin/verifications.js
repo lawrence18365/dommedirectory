@@ -110,7 +110,7 @@ export default function AdminVerifications() {
     return (
       <Layout>
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-900"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-900"></div>
         </div>
       </Layout>
     );
@@ -165,7 +165,7 @@ export default function AdminVerifications() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-4 py-5 sm:px-6 bg-purple-700 text-white">
+            <div className="px-4 py-5 sm:px-6 bg-red-700 text-white">
               <h1 className="text-xl font-bold">Verification Management</h1>
               <p className="mt-1 text-sm">
                 Review and approve pending verification requests
@@ -215,8 +215,8 @@ export default function AdminVerifications() {
                         <tr key={verification.id}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
-                              <div className="flex-shrink-0 h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                                <span className="text-lg font-medium text-purple-800">
+                              <div className="flex-shrink-0 h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                                <span className="text-lg font-medium text-red-800">
                                   {verification.profiles.display_name.charAt(0)}
                                 </span>
                               </div>
@@ -249,7 +249,7 @@ export default function AdminVerifications() {
                                   href={url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-purple-600 hover:text-purple-900 text-xs"
+                                  className="text-red-600 hover:text-red-900 text-xs"
                                 >
                                   View Doc {index + 1}
                                 </a>

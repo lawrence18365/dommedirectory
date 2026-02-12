@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
 import { buffer } from 'micro';
 import { supabase } from '../../../utils/supabase';
+import { markProfileAsVerified } from '../../../services/profiles';
+import { applyRateLimit } from '../../../utils/rateLimit'; // Import the new function
 
 // Initialize Stripe with your secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -17,6 +19,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Apply rate limiting: 100 webhook events per minute (generous for Stripe)
+  const allowed = applyRateLimit(req, res, {
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100,
+  });
+  
+  if (!allowed) return;
 
   const buf = await buffer(req);
   const sig = req.headers['stripe-signature'];
@@ -89,8 +99,15 @@ async function handleCheckoutSessionCompleted(session) {
     }
 
     // If this is a verification payment, update verification status
+    // If this is a verification payment, update verification status
     if (session.metadata?.paymentType === 'verification') {
-      // No need to update anything here, admin still needs to review documents
+      const profileId = session.client_reference_id || session.metadata?.profileId; // Get profileId from session
+      if (profileId) {
+        console.log(`Processing verification payment for profile: ${profileId}`);
+        await markProfileAsVerified(profileId);
+      } else {
+        console.error('Verification payment completed but profileId missing from session:', session.id);
+      }
     }
   } catch (error) {
     console.error('Error handling checkout.session.completed:', error);

@@ -100,7 +100,7 @@ export default function EditPost() {
           <label className="block font-semibold">Meta Description</label>
           <textarea {...register('meta_description')} rows={3} className="w-full border border-gray-300 rounded px-3 py-2" />
         </div>
-        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Update Post</button>
+        <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded">Update Post</button>
       </form>
     </div>
   );
