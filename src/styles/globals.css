@@ -1,11 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Import Design System */
+/* Import Design System - Must be first */
 @import './tokens.css';
 @import './animations.css';
 @import './design-system.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ==========================================================================
    Base Styles
