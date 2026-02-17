@@ -1,4 +1,5 @@
 import { supabase } from '../../utils/supabase';
+import { slugify } from '../../utils/slugify';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dommedirectory.com';
 
@@ -19,7 +20,7 @@ function generateSiteMap(posts, locations, listings) {
   }));
 
   const locationUrls = (locations || []).map((location) => ({
-    url: `/location/${location.id}`,
+    url: `/location/${slugify(location.city)}`,
     priority: '0.7',
     changefreq: 'daily',
     lastmod: location.updated_at || location.created_at,
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
     // Fetch dynamic content from database
     const [{ data: posts }, { data: locations }, { data: listings }] = await Promise.all([
       supabase.from('posts').select('slug, updated_at, published_at, created_at').eq('status', 'published'),
-      supabase.from('locations').select('id, updated_at, created_at'),
+      supabase.from('locations').select('id, city, updated_at, created_at'),
       supabase.from('listings').select('id, updated_at, created_at').eq('is_active', true),
     ]);
 

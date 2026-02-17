@@ -1,11 +1,15 @@
 // services/locations.js
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 
 /**
  * Get all locations
  */
 export const getAllLocations = async () => {
   try {
+    if (!isSupabaseConfigured) {
+      return { locations: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase
       .from('locations')
       .select('id, city, state, country, is_active') // Remove slug - it does not exist
@@ -27,6 +31,10 @@ export const getAllLocations = async () => {
  */
 export const getLocationsGrouped = async () => {
   try {
+    if (!isSupabaseConfigured) {
+      return { grouped: {}, error: null };
+    }
+
     const { locations, error } = await getAllLocations();
     
     if (error) throw error;
@@ -65,6 +73,10 @@ export const getLocationsGrouped = async () => {
  */
 export const getLocationById = async (locationId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { location: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase
       .from('locations')
       .select('*')
@@ -84,29 +96,63 @@ export const getLocationById = async (locationId) => {
  * @param {string} slug
  */
 export const getLocationBySlug = async (slug) => {
-  // Basic slugification for lookup (lowercase) - adjust if your slugs are different
-  const lookupSlug = slug.toLowerCase();
+  if (!isSupabaseConfigured) {
+    return { location: null, error: new Error('Supabase is not configured') };
+  }
+
+  const normalizedSlug = (slug || '')
+    .toString()
+    .toLowerCase()
+    .replace(/-/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const lookupPattern = `%${normalizedSlug.split(' ').filter(Boolean).join('%')}%`;
+
   try {
     const { data, error } = await supabase
       .from('locations')
       .select('*')
-      // Query by city name using case-insensitive matching
-      // Note: This might return the wrong city if names are duplicated across states/countries
-      // A more robust solution would involve slugs or additional URL parameters (e.g., /location/ca/bc/vancouver)
-      .ilike('city', lookupSlug)
-      .maybeSingle(); // Use maybeSingle to handle 0 or 1 result gracefully
+      .eq('is_active', true)
+      .ilike('city', lookupPattern)
+      .limit(20);
 
     if (error) throw error;
-    // Handle case where no location is found for the slug
-    if (!data) {
+    if (!data || data.length === 0) {
       return { location: null, error: { message: `Location not found for slug: ${slug}` } };
     }
-    // Handle case where no location is found for the city name
-    if (!data) {
-      // Return a more specific error or null location
-      return { location: null, error: { message: `Location not found for city: ${slug}` } };
+
+    if (data.length === 1) {
+      return { location: data[0], error: null };
     }
-    return { location: data, error: null };
+
+    // If there are duplicate city names, prioritize the location with most active listings.
+    const locationIds = data.map((location) => location.id);
+    const { data: listingsData, error: listingsError } = await supabase
+      .from('listings')
+      .select('location_id')
+      .eq('is_active', true)
+      .in('location_id', locationIds);
+
+    if (listingsError) throw listingsError;
+
+    const listingCounts = (listingsData || []).reduce((acc, listing) => {
+      acc[listing.location_id] = (acc[listing.location_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    const bestLocation = [...data].sort((a, b) => {
+      const countDiff = (listingCounts[b.id] || 0) - (listingCounts[a.id] || 0);
+      if (countDiff !== 0) return countDiff;
+
+      const countryDiff = (a.country || '').localeCompare(b.country || '');
+      if (countryDiff !== 0) return countryDiff;
+
+      return (a.state || '').localeCompare(b.state || '');
+    })[0];
+
+    return { location: bestLocation, error: null };
   } catch (error) {
     console.error(`Error fetching location by city (${slug}):`, error.message);
     return { location: null, error };
@@ -120,6 +166,10 @@ export const getLocationBySlug = async (slug) => {
  */
 export const getListingsByLocation = async (locationId, options = {}) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { listings: null, error: new Error('Supabase is not configured') };
+    }
+
     let query = supabase
       .from('listings')
       .select(`
@@ -174,6 +224,10 @@ export const getListingsByLocation = async (locationId, options = {}) => {
  */
 export const getTopLocations = async (limit = 12) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { locations: null, error: new Error('Supabase is not configured') };
+    }
+
     // Alternative implementation that doesn't use .group()
     // First get all active listings
     const { data: listingsData, error: listingsError } = await supabase

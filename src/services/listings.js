@@ -143,15 +143,6 @@ export const uploadMedia = async (listingId, file, isPrimary = false) => {
     const { url, error: uploadError } = await uploadToStorage(listingId, file);
     if (uploadError) throw uploadError;
 
-    // Get the current profile_id for this listing
-    const { data: listingData, error: listingError } = await supabase
-      .from('listings')
-      .select('profile_id')
-      .eq('id', listingId)
-      .single();
-
-    if (listingError) throw listingError;
-
     // Create media record
     const { data: mediaData, error: mediaError } = await supabase
       .from('media')
@@ -159,7 +150,6 @@ export const uploadMedia = async (listingId, file, isPrimary = false) => {
         {
           listing_id: listingId,
           storage_path: url,
-          media_type: file.type.startsWith('image/') ? 'image' : 'video',
           is_primary: isPrimary
         }
       ])

@@ -42,7 +42,12 @@ const LoginPage = () => {
     } else {
       // Sign in successful, redirect user (e.g., to dashboard or intended page)
       // Check if there's a 'redirect' query param or default to dashboard
-      const redirectPath = router.query.redirect || '/dashboard';
+      const redirectParam = Array.isArray(router.query.redirect)
+        ? router.query.redirect[0]
+        : router.query.redirect;
+      const redirectPath = redirectParam && redirectParam.startsWith('/')
+        ? redirectParam
+        : '/dashboard';
       router.push(redirectPath);
       // No need to setLoading(false) here as we are navigating away
     }

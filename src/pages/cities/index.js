@@ -394,7 +394,10 @@ export default function CitiesDirectory({ initialLocations, error }) {
 // City Card Component
 function CityCard({ city, showState = false }) {
   const cityImage = getCityImage(city.city);
-  const listingCount = Math.floor(Math.random() * 50) + 5; // Mock count
+  const seed = String(city.id || city.city)
+    .split('')
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const listingCount = 5 + (seed % 50);
 
   return (
     <Link

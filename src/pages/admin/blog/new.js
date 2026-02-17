@@ -1,25 +1,41 @@
 import { useForm } from 'react-hook-form';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { fetchCategories } from '../../../services/blog';
+import { fetchCategories, createPost } from '../../../services/blog';
+import { getCurrentUser } from '../../../services/auth';
 
 export default function NewPost() {
   const { register, handleSubmit, formState: { errors } } = useForm();
   const [categories, setCategories] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
-    fetchCategories().then(setCategories);
-  }, []);
+    const loadPage = async () => {
+      const { user, error } = await getCurrentUser();
+      const isAdmin = user?.user_metadata?.user_type === 'admin';
+
+      if (error || !user || !isAdmin) {
+        router.push('/auth/login');
+        return;
+      }
+
+      setCurrentUserId(user.id);
+      const data = await fetchCategories();
+      setCategories(data);
+    };
+
+    loadPage();
+  }, [router]);
 
   const onSubmit = async (data) => {
     try {
-      const response = await fetch('/api/blog/posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to create post');
+      if (!currentUserId) {
+        throw new Error('Authentication required');
+      }
+
+      const { error } = await createPost(data, currentUserId);
+      if (error) throw error;
       router.push('/admin/blog');
     } catch (error) {
       alert(error.message);

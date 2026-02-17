@@ -1,12 +1,17 @@
-import { supabase } from '../../../utils/supabase';
-import { getUserFromRequest } from '../../../services/auth';
+import {
+  createAuthenticatedSupabaseClient,
+  getAuthTokenFromRequest,
+  getUserFromRequest,
+} from '../../../services/auth';
 import { withErrorHandler, Errors, createValidationErrors } from '../../../utils/apiErrors';
 import { sanitizeString } from '../../../utils/validation';
 
 async function handler(req, res) {
+  const token = getAuthTokenFromRequest(req);
   const user = await getUserFromRequest(req);
+  const supabase = createAuthenticatedSupabaseClient(token);
 
-  if (!user) {
+  if (!user || !supabase) {
     throw Errors.unauthorized('Authentication required');
   }
 

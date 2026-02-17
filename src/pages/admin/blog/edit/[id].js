@@ -1,22 +1,39 @@
 import { useForm } from 'react-hook-form';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { fetchCategories, fetchPostById } from '../../../../services/blog';
+import { fetchCategories, fetchPostById, updatePost } from '../../../../services/blog';
+import { getCurrentUser } from '../../../../services/auth';
 
 export default function EditPost() {
   const { register, handleSubmit, setValue, formState: { errors } } = useForm();
   const [categories, setCategories] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const router = useRouter();
   const { id } = router.query;
 
   useEffect(() => {
-    if (!id) return;
-    fetchPostById(id).then((post) => {
+    if (!id) {
+      return;
+    }
+
+    const loadPage = async () => {
+      const { user, error } = await getCurrentUser();
+      const isAdmin = user?.user_metadata?.user_type === 'admin';
+
+      if (error || !user || !isAdmin) {
+        router.push('/auth/login');
+        return;
+      }
+
+      setCurrentUserId(user.id);
+
+      const post = await fetchPostById(id);
       if (!post) {
         alert('Post not found');
         router.push('/admin/blog');
         return;
       }
+
       setValue('title', post.title);
       setValue('slug', post.slug);
       setValue('content', post.content);
@@ -27,18 +44,21 @@ export default function EditPost() {
       setValue('category_id', post.category_id);
       setValue('meta_title', post.meta_title);
       setValue('meta_description', post.meta_description);
-    });
-    fetchCategories().then(setCategories);
-  }, [id, setValue]);
+      const data = await fetchCategories();
+      setCategories(data);
+    };
+
+    loadPage();
+  }, [id, router, setValue]);
 
   const onSubmit = async (data) => {
     try {
-      const response = await fetch(`/api/blog/posts/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update post');
+      if (!currentUserId) {
+        throw new Error('Authentication required');
+      }
+
+      const { error } = await updatePost(id, data, currentUserId);
+      if (error) throw error;
       router.push('/admin/blog');
     } catch (error) {
       alert(error.message);

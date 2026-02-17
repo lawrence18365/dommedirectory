@@ -6,11 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint --max-warnings=0",
+    "lint": "eslint src e2e --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "gate": "npm run lint && npm run typecheck && npm run build && npm run e2e",
-    "lint:fix": "next lint --fix",
+    "lint:fix": "eslint src e2e --fix",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\"",
     "stripe:listen": "stripe listen --forward-to localhost:3000/api/payments/webhook"
   },

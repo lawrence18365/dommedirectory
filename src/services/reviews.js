@@ -71,12 +71,31 @@ export const getListingRating = async (listingId) => {
  */
 export const createReview = async (reviewData) => {
   try {
+    const listingId = reviewData.listing_id || reviewData.listingId;
+    const profileId = reviewData.profile_id || reviewData.profileId;
+    const content = reviewData.content;
+    const rating = Number(reviewData.rating);
+
+    let reviewerId = reviewData.reviewer_id || reviewData.reviewerId;
+    if (!reviewerId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      reviewerId = user?.id || null;
+    }
+
+    if (!listingId || !profileId || !reviewerId || !content) {
+      return { review: null, error: new Error('Missing required review fields') };
+    }
+
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return { review: null, error: new Error('Rating must be between 1 and 5') };
+    }
+
     // Check if user has already reviewed this listing
     const { data: existingReview } = await supabase
       .from('reviews')
       .select('id')
-      .eq('listing_id', reviewData.listing_id)
-      .eq('reviewer_id', reviewData.reviewer_id)
+      .eq('listing_id', listingId)
+      .eq('reviewer_id', reviewerId)
       .single();
 
     if (existingReview) {
@@ -86,11 +105,11 @@ export const createReview = async (reviewData) => {
     const { data, error } = await supabase
       .from('reviews')
       .insert([{
-        listing_id: reviewData.listing_id,
-        profile_id: reviewData.profile_id,
-        reviewer_id: reviewData.reviewer_id,
-        rating: reviewData.rating,
-        content: reviewData.content,
+        listing_id: listingId,
+        profile_id: profileId,
+        reviewer_id: reviewerId,
+        rating,
+        content,
         is_approved: true, // Auto-approve for now
         created_at: new Date(),
       }])

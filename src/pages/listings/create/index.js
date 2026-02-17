@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { getAllLocations } from '../../../services/locations';
 import { createListing, uploadListingMedia } from '../../../services/listings';
 import { getProfile } from '../../../services/profiles';
-import { PRICES, createCheckoutSession } from '../../../services/payments';
-import { getStripe } from '../../../utils/stripe';
 import { validateListingData, sanitizeString } from '../../../utils/validation';
 
 export default function CreateListing() {
@@ -24,9 +22,6 @@ export default function CreateListing() {
   const [uploadedMedia, setUploadedMedia] = useState([]);
   const [mediaPreviewUrls, setMediaPreviewUrls] = useState([]);
   const [primaryMediaIndex, setPrimaryMediaIndex] = useState(0);
-  const [listingFeatures, setListingFeatures] = useState({
-    isFeatured: false,
-  });
 
   const [formData, setFormData] = useState({
     title: '',
@@ -117,13 +112,6 @@ export default function CreateListing() {
     }
   };
 
-  const handleFeatureToggle = (feature) => {
-    setListingFeatures({
-      ...listingFeatures,
-      [feature]: !listingFeatures[feature],
-    });
-  };
-
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
@@ -201,32 +189,12 @@ export default function CreateListing() {
       if (uploadedMedia.length > 0) {
         for (let i = 0; i < uploadedMedia.length; i++) {
           const isPrimary = i === primaryMediaIndex;
-          await uploadListingMedia(listing.id, user.id, uploadedMedia[i], isPrimary);
+          await uploadListingMedia(listing.id, uploadedMedia[i], isPrimary);
         }
       }
 
-      // Redirect to payment if listing should be featured
-      if (listingFeatures.isFeatured) {
-        const { sessionId, error: paymentError } = await createCheckoutSession(
-          user.id,
-          listing.id,
-          PRICES.FEATURED_LISTING,
-          true
-        );
-
-        if (paymentError) throw paymentError;
-
-        // Redirect to Stripe checkout
-        const stripe = await getStripe();
-        const { error: stripeError } = await stripe.redirectToCheckout({
-          sessionId,
-        });
-
-        if (stripeError) throw stripeError;
-      } else {
-        // Just redirect to the newly created listing
-        router.push(`/listings/${listing.id}`);
-      }
+      // Charging is disabled for now, so listings go live immediately.
+      router.push(`/listings/${listing.id}`);
 
       setSuccess(true);
     } catch (error) {
@@ -554,37 +522,6 @@ export default function CreateListing() {
                         className="mt-1 block w-full bg-[#262626] border border-white/10 pl-7 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                         placeholder="0.00"
                       />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Listing Features */}
-              <div>
-                <h2 className="text-lg font-medium text-white">Listing Features</h2>
-                <p className="mt-1 text-sm text-gray-400">
-                  Enhance your listing visibility with premium features
-                </p>
-
-                <div className="mt-4 bg-[#262626] p-4 rounded-md border border-white/5">
-                  <div className="relative flex items-start">
-                    <div className="flex items-center h-5">
-                      <input
-                        id="feature-isFeatured"
-                        name="feature-isFeatured"
-                        type="checkbox"
-                        checked={listingFeatures.isFeatured}
-                        onChange={() => handleFeatureToggle('isFeatured')}
-                        className="h-4 w-4 text-red-600 border-gray-600 rounded bg-[#1a1a1a] focus:ring-red-500 focus:ring-offset-[#1a1a1a]"
-                      />
-                    </div>
-                    <div className="ml-3 text-sm">
-                      <label htmlFor="feature-isFeatured" className="font-medium text-gray-300">
-                        Featured Listing
-                      </label>
-                      <p className="text-gray-500">
-                        Make your listing stand out with priority placement and a featured badge. ($X/month)
-                      </p>
                     </div>
                   </div>
                 </div>

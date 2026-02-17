@@ -150,6 +150,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
   
   // Reviews state
   const [reviews, setReviews] = useState([]);
@@ -164,6 +165,19 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
       fetchReviews();
     }
   }, [activeTab, listing?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (!isMounted) return;
+      setCurrentUserId(data?.user?.id || null);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const fetchReviews = async () => {
     setLoadingReviews(true);
@@ -183,6 +197,10 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   };
 
   const handleSubmitReview = async (reviewData) => {
+    if (!currentUserId) {
+      return { error: 'Please log in to submit a review.' };
+    }
+
     const { review, error } = await createReview(reviewData);
     if (error) {
       return { error: error.message };

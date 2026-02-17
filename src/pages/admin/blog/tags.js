@@ -13,7 +13,9 @@ export default function AdminTags() {
   useEffect(() => {
     const checkAuth = async () => {
       const { user, error } = await getCurrentUser();
-      if (error || !user) {
+      const isAdmin = user?.user_metadata?.user_type === 'admin';
+
+      if (error || !user || !isAdmin) {
         router.push('/auth/login');
         return;
       }
@@ -30,9 +32,11 @@ export default function AdminTags() {
   const onSubmit = async (data) => {
     try {
       if (editingTag) {
-        await updateTag(editingTag.id, data);
+        const { error } = await updateTag(editingTag.id, data);
+        if (error) throw error;
       } else {
-        await createTag(data);
+        const { error } = await createTag(data);
+        if (error) throw error;
       }
       reset();
       setEditingTag(null);
@@ -50,7 +54,8 @@ export default function AdminTags() {
   const onDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this tag?')) return;
     try {
-      await deleteTag(id);
+      const { error } = await deleteTag(id);
+      if (error) throw error;
       loadTags();
     } catch (error) {
       alert(error.message);

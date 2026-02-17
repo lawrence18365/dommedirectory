@@ -12,12 +12,14 @@ export default function AdminBlog() {
   useEffect(() => {
     const checkAuth = async () => {
       const { user, error } = await getCurrentUser();
-      if (error || !user) {
+      const isAdmin = user?.user_metadata?.user_type === 'admin';
+
+      if (error || !user || !isAdmin) {
         router.push('/auth/login');
         return;
       }
       setLoading(true);
-      fetchPosts({ page: 1, pageSize: 100 })
+      fetchPosts({ page: 1, pageSize: 100, includeDrafts: true })
         .then((data) => {
           setPosts(data);
           setLoading(false);

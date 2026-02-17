@@ -1,39 +1,64 @@
 import { supabase } from '../utils/supabase';
 import { createClient } from '@supabase/supabase-js';
 
+const getSupabaseServerConfig = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  return { supabaseUrl, supabaseAnonKey };
+};
+
+export const getAuthTokenFromRequest = (req) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.slice(7).trim();
+  return token || null;
+};
+
+export const createAuthenticatedSupabaseClient = (token) => {
+  const config = getSupabaseServerConfig();
+  if (!config || !token) {
+    return null;
+  }
+
+  return createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+};
+
 /**
  * Get user from request (for API routes)
  * @param {Object} req - Next.js request object
  */
 export const getUserFromRequest = async (req) => {
-  // Create a new Supabase client for server-side auth
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
+  const config = getSupabaseServerConfig();
+  if (!config) {
     console.error('Missing Supabase environment variables');
     return null;
   }
 
-  const supabaseServer = createClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    }
-  );
-  
-  // Get the JWT from the Authorization header
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
+  const token = getAuthTokenFromRequest(req);
+  if (!token) {
     return null;
   }
-  
-  const token = authHeader.replace('Bearer ', '');
-  if (!token) {
+
+  const supabaseServer = createAuthenticatedSupabaseClient(token);
+  if (!supabaseServer) {
     return null;
   }
   

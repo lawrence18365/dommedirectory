@@ -4,8 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useUser } from '@supabase/auth-helpers-react';
 import { updateProfile, updateProfilePicture } from '../../services/profiles';
-import { createListing } from '../../services/listings';
-import { uploadImage } from '../../services/storage';
+import { createListing, uploadListingMedia } from '../../services/listings';
 import { getAllLocations } from '../../services/locations';
 import { Camera, Check, ChevronRight, Loader2, MapPin, User, Briefcase, Sparkles } from 'lucide-react';
 
@@ -199,11 +198,11 @@ export default function Onboarding() {
     // Upload listing images
     if (listingImages.length > 0) {
       for (let i = 0; i < listingImages.length; i++) {
-        const { error: uploadError } = await uploadImage(
-          listingImages[i], 
-          'media', 
-          `listings/${listing.id}`, 
-          'listing'
+        const isPrimary = i === 0;
+        const { error: uploadError } = await uploadListingMedia(
+          listing.id,
+          listingImages[i],
+          isPrimary
         );
         if (uploadError) {
           console.error('Image upload error:', uploadError);

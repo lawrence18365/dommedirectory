@@ -242,7 +242,7 @@ export default function EditListing() {
       if (uploadedMedia.length > 0) {
         for (let i = 0; i < uploadedMedia.length; i++) {
           const isPrimary = i === newPrimaryMediaIndex;
-          await uploadListingMedia(id, user.id, uploadedMedia[i], isPrimary);
+          await uploadListingMedia(id, uploadedMedia[i], isPrimary);
         }
       }
       

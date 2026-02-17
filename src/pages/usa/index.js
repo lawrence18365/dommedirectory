@@ -46,7 +46,7 @@ export default function USAPage() {
           media(storage_path, is_primary)
         `)
         .eq('is_active', true)
-        .eq('locations.country', 'USA')
+        .eq('locations.country', 'United States')
         .order('created_at', { ascending: false })
         .limit(8);
 

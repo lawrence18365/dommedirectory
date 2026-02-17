@@ -13,7 +13,9 @@ export default function AdminCategories() {
   useEffect(() => {
     const checkAuth = async () => {
       const { user, error } = await getCurrentUser();
-      if (error || !user) {
+      const isAdmin = user?.user_metadata?.user_type === 'admin';
+
+      if (error || !user || !isAdmin) {
         router.push('/auth/login');
         return;
       }
@@ -30,9 +32,11 @@ export default function AdminCategories() {
   const onSubmit = async (data) => {
     try {
       if (editingCategory) {
-        await updateCategory(editingCategory.id, data);
+        const { error } = await updateCategory(editingCategory.id, data);
+        if (error) throw error;
       } else {
-        await createCategory(data);
+        const { error } = await createCategory(data);
+        if (error) throw error;
       }
       reset();
       setEditingCategory(null);
@@ -50,7 +54,8 @@ export default function AdminCategories() {
   const onDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this category?')) return;
     try {
-      await deleteCategory(id);
+      const { error } = await deleteCategory(id);
+      if (error) throw error;
       loadCategories();
     } catch (error) {
       alert(error.message);

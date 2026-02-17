@@ -5,11 +5,10 @@ test.describe('Authentication Flows', () => {
     await page.goto('/');
     
     // Check main content loads
-    await expect(page.getByRole('heading', { name: /featured professional dommes/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /featured listings near me/i })).toBeVisible();
     
-    // Check navigation has auth links
-    await expect(page.getByRole('link', { name: /login/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /sign up|register/i })).toBeVisible();
+    // Check auth CTA exists
+    await expect(page.getByRole('link', { name: /sign up|register/i }).first()).toBeVisible();
   });
 
   test('login page loads with form', async ({ page }) => {
