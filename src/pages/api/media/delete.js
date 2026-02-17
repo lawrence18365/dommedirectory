@@ -1,5 +1,6 @@
 import { deleteFromB2 } from '../../../utils/b2';
 import { getUserFromRequest } from '../../../services/auth';
+import { applyRateLimit } from '../../../utils/rateLimit';
 
 /**
  * Delete media from Backblaze B2
@@ -12,6 +13,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (!applyRateLimit(req, res, { maxRequests: 50 })) return;
 
   try {
     // Authenticate user
@@ -26,15 +29,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No key provided' });
     }
 
+    // Reject path traversal and null bytes
+    if (key.includes('..') || key.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid key' });
+    }
+
     // Security check: ensure user can only delete their own files
     // Key format: {type}/{userId}/{filename}
     const keyParts = key.split('/');
-    if (keyParts.length < 2) {
+    if (keyParts.length < 3) {
       return res.status(400).json({ error: 'Invalid key format' });
     }
 
-    const keyUserId = keyParts[1];
-    if (keyUserId !== user.id) {
+    const expectedPrefix = `${keyParts[0]}/${user.id}/`;
+    if (!key.startsWith(expectedPrefix)) {
       return res.status(403).json({ error: 'Can only delete your own files' });
     }
 

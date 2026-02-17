@@ -105,37 +105,40 @@ function Toast({ toast, onClose }) {
   );
 }
 
-// Add animation styles
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slideInRight {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
+// Add animation styles (SSR-safe with deduplication)
+if (typeof document !== 'undefined' && !document.getElementById('toast-animations')) {
+  const style = document.createElement('style');
+  style.id = 'toast-animations';
+  style.textContent = `
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
     }
-    to {
-      transform: translateX(0);
-      opacity: 1;
+
+    @keyframes slideOutRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
     }
-  }
-  
-  @keyframes slideOutRight {
-    from {
-      transform: translateX(0);
-      opacity: 1;
+
+    .animate-slideInRight {
+      animation: slideInRight 0.3s ease-out forwards;
     }
-    to {
-      transform: translateX(100%);
-      opacity: 0;
+
+    .animate-slideOutRight {
+      animation: slideOutRight 0.3s ease-in forwards;
     }
-  }
-  
-  .animate-slideInRight {
-    animation: slideInRight 0.3s ease-out forwards;
-  }
-  
-  .animate-slideOutRight {
-    animation: slideOutRight 0.3s ease-in forwards;
-  }
-`;
-document.head.appendChild(style);
+  `;
+  document.head.appendChild(style);
+}

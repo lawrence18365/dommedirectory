@@ -1,5 +1,7 @@
 import { getUserFromRequest } from '../../../services/auth';
 import { createReview, getListingReviews, getListingRating } from '../../../services/reviews';
+import { sanitizeString } from '../../../utils/validation';
+import { applyRateLimit } from '../../../utils/rateLimit';
 
 /**
  * GET /api/reviews?listingId=xxx
@@ -13,9 +15,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Listing ID required' });
     }
 
+    const allowedSortBy = ['newest', 'highest', 'lowest'];
+    const safeSortBy = allowedSortBy.includes(sortBy) ? sortBy : 'newest';
+
     try {
       const [{ reviews }, { average, count }] = await Promise.all([
-        getListingReviews(listingId, { limit: parseInt(limit) || 10, offset: parseInt(offset) || 0, sortBy }),
+        getListingReviews(listingId, { limit: parseInt(limit) || 10, offset: parseInt(offset) || 0, sortBy: safeSortBy }),
         getListingRating(listingId)
       ]);
 
@@ -27,6 +32,8 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    if (!applyRateLimit(req, res, { maxRequests: 20 })) return;
+
     // Authenticate user
     const user = await getUserFromRequest(req);
     if (!user) {
@@ -58,7 +65,7 @@ export default async function handler(req, res) {
         profile_id,
         reviewer_id: user.id,
         rating,
-        content
+        content: sanitizeString(content, 1000)
       });
 
       if (error) {

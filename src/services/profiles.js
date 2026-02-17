@@ -82,6 +82,14 @@ export const updateProfile = async (profileId, profileData) => {
       updatePayload.profile_picture_url = profileData.profile_picture_url;
     }
 
+    if (Object.prototype.hasOwnProperty.call(profileData, 'marketing_opt_in')) {
+      updatePayload.marketing_opt_in = Boolean(profileData.marketing_opt_in);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'marketing_opt_in_at')) {
+      updatePayload.marketing_opt_in_at = profileData.marketing_opt_in_at || null;
+    }
+
     const { error } = await supabase
       .from('profiles')
       .upsert(updatePayload, { onConflict: 'id' });
@@ -138,7 +146,7 @@ export const markProfileAsVerified = async (profileId) => {
       .update({
         is_verified: true,
         verification_expires_at: expiryDate.toISOString(),
-        updated_at: new Date(),
+        updated_at: new Date().toISOString(),
       })
       .eq('id', profileId);
 
@@ -165,8 +173,8 @@ export const submitVerification = async (profileId, documentUrls) => {
           profile_id: profileId,
           document_urls: documentUrls,
           status: 'pending',
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         }
       ]);
 

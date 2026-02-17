@@ -82,8 +82,10 @@ export const getUserFromRequest = async (req) => {
  * @param {string} password 
  * @param {string} displayName
  * @param {string} locationId
+ * @param {boolean} marketingOptIn
  */
-export const signUp = async (email, password, displayName, locationId) => {
+export const signUp = async (email, password, displayName, locationId, marketingOptIn = false) => {
+  const normalizedMarketingOptIn = Boolean(marketingOptIn);
   try {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -94,6 +96,8 @@ export const signUp = async (email, password, displayName, locationId) => {
           // Pass profile data to be used by the trigger
           display_name: displayName || email.split('@')[0],
           primary_location_id: locationId,
+          marketing_opt_in: normalizedMarketingOptIn,
+          marketing_opt_in_at: normalizedMarketingOptIn ? new Date().toISOString() : null,
         },
       },
     });

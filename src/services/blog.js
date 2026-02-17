@@ -370,6 +370,27 @@ export const deleteTag = async (id) => {
   }
 };
 
+export const fetchPostsByCategory = async (categoryId) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*, categories(id, name, slug)')
+      .eq('category_id', categoryId)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching posts by category:', error.message);
+    return [];
+  }
+};
+
 export const fetchPostsByTag = async (tagId) => {
   try {
     if (!isSupabaseConfigured) {

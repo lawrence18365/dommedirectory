@@ -517,7 +517,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                       {profile.website && (
                         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                           <h4 className="text-gray-400 text-sm mb-1">Website</h4>
-                          <a href={profile.website.startsWith('http') ? profile.website : `https://${profile.website}`} target="_blank" rel="noopener noreferrer" className="text-white hover:text-red-400 transition-colors">{profile.website}</a>
+                          <a href={(() => { try { const u = new URL(profile.website.startsWith('http') ? profile.website : `https://${profile.website}`); return ['http:', 'https:'].includes(u.protocol) ? u.href : '#'; } catch { return '#'; } })()} target="_blank" rel="noopener noreferrer" className="text-white hover:text-red-400 transition-colors">{profile.website}</a>
                         </div>
                       )}
                     </div>

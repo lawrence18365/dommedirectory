@@ -56,7 +56,10 @@ const LoginPage = () => {
         const redirectParam = Array.isArray(router.query.redirect)
           ? router.query.redirect[0]
           : router.query.redirect;
-        const redirectPath = redirectParam && redirectParam.startsWith('/')
+        const redirectPath = redirectParam
+          && redirectParam.startsWith('/')
+          && !redirectParam.startsWith('//')
+          && !redirectParam.includes('://')
           ? redirectParam
           : '/dashboard';
         router.push(redirectPath);

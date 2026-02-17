@@ -1,5 +1,6 @@
 import { uploadToB2, generateFileKey } from '../../../utils/b2';
 import { getUserFromRequest } from '../../../services/auth';
+import { applyRateLimit } from '../../../utils/rateLimit';
 import formidable from 'formidable';
 import fs from 'fs';
 
@@ -39,6 +40,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!applyRateLimit(req, res, { maxRequests: 30 })) return;
+
   try {
     // Authenticate user
     const user = await getUserFromRequest(req);
@@ -66,6 +69,20 @@ export default async function handler(req, res) {
       });
     }
 
+    // Validate file magic bytes
+    const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+    const header = fileBuffer.slice(0, 4).toString('hex');
+    const validSignatures = [
+      'ffd8ff',   // JPEG
+      '89504e47', // PNG
+      '52494646', // WebP (RIFF)
+      '47494638', // GIF
+    ];
+    if (!validSignatures.some(sig => header.startsWith(sig))) {
+      fs.unlinkSync(uploadedFile.filepath);
+      return res.status(400).json({ error: 'File content does not match an allowed image type' });
+    }
+
     // Generate unique key
     const folder = type === 'profile' ? 'profiles' : 
                    type === 'listing' ? 'listings' : 'verifications';
@@ -75,8 +92,7 @@ export default async function handler(req, res) {
       uploadedFile.originalFilename || 'image.jpg'
     );
 
-    // Read file and upload to B2
-    const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+    // Upload to B2
     const { url, error } = await uploadToB2(
       fileBuffer, 
       key, 

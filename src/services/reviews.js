@@ -76,11 +76,7 @@ export const createReview = async (reviewData) => {
     const content = reviewData.content;
     const rating = Number(reviewData.rating);
 
-    let reviewerId = reviewData.reviewer_id || reviewData.reviewerId;
-    if (!reviewerId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      reviewerId = user?.id || null;
-    }
+    const reviewerId = reviewData.reviewer_id || reviewData.reviewerId;
 
     if (!listingId || !profileId || !reviewerId || !content) {
       return { review: null, error: new Error('Missing required review fields') };
@@ -111,7 +107,7 @@ export const createReview = async (reviewData) => {
         rating,
         content,
         is_approved: true, // Auto-approve for now
-        created_at: new Date(),
+        created_at: new Date().toISOString(),
       }])
       .select()
       .single();

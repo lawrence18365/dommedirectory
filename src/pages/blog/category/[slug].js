@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { fetchCategories, fetchPosts } from '../../../services/blog';
+import { fetchCategories, fetchPostsByCategory } from '../../../services/blog';
 
 export default function CategoryPage({ category, posts }) {
   const router = useRouter();
@@ -54,7 +54,7 @@ export async function getStaticProps({ params }) {
   }
 
   // Fetch posts by category id
-  const { data: posts, error } = await fetchPostsByCategoryId(category.id);
+  const posts = await fetchPostsByCategory(category.id);
 
   return {
     props: {
@@ -63,13 +63,4 @@ export async function getStaticProps({ params }) {
     },
     revalidate: 60,
   };
-}
-
-// Helper function to fetch posts by category id
-async function fetchPostsByCategoryId(categoryId) {
-  const { data, error } = await fetchPostsByCategory(categoryId);
-  if (error) {
-    return { data: [], error };
-  }
-  return { data, error };
 }

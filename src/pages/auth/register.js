@@ -4,13 +4,15 @@ import { useRouter } from 'next/router';
 import { signUp } from '../../services/auth';
 import { getAllLocations } from '../../services/locations';
 import Layout from '../../components/layout/Layout';
-import { isValidEmail, validatePassword, sanitizeString } from '../../utils/validation'; // Assuming Layout component exists
+import { isValidEmail, validatePassword, sanitizeString } from '../../utils/validation';
+import { MARKETING_CONSENT_TEXT } from '../../utils/constants';
 
 const RegisterPage = () => {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -71,7 +73,8 @@ const RegisterPage = () => {
       sanitizeString(email, 255),
       password,
       sanitizeString(displayName, 100),
-      selectedLocation
+      selectedLocation,
+      marketingOptIn
     );
 
     if (signUpError) {
@@ -159,6 +162,18 @@ const RegisterPage = () => {
               ))}
             </select>
           </div>
+
+          <label className="flex items-start gap-3 rounded border border-white/10 bg-[#151515] px-3 py-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(e) => setMarketingOptIn(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-white/20 bg-[#262626] text-red-600 focus:ring-red-500"
+            />
+            <span className="text-sm text-gray-300">
+              {MARKETING_CONSENT_TEXT}
+            </span>
+          </label>
 
           {error && (
             <div className="bg-red-900/20 border border-red-500/50 rounded p-3">

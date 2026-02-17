@@ -54,7 +54,7 @@ export async function getStaticProps({ params }) {
   }
 
   // Fetch posts by tag id
-  const { data: posts, error } = await fetchPostsByTagId(tag.id);
+  const posts = await fetchPostsByTag(tag.id);
 
   return {
     props: {
@@ -63,13 +63,4 @@ export async function getStaticProps({ params }) {
     },
     revalidate: 60,
   };
-}
-
-// Helper function to fetch posts by tag id
-async function fetchPostsByTagId(tagId) {
-  const { data, error } = await fetchPostsByTag(tagId);
-  if (error) {
-    return { data: [], error };
-  }
-  return { data, error };
 }

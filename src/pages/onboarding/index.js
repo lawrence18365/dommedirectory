@@ -8,6 +8,7 @@ import { createListing, uploadListingMedia } from '../../services/listings';
 import { getAllLocations } from '../../services/locations';
 import { Camera, Check, ChevronRight, Loader2, MapPin, User, Briefcase, Sparkles } from 'lucide-react';
 import { sanitizeString, validateListingData } from '../../utils/validation';
+import { MARKETING_CONSENT_TEXT } from '../../utils/constants';
 
 const STEPS = [
   { id: 'welcome', title: 'Welcome', icon: Sparkles },
@@ -44,6 +45,8 @@ export default function Onboarding() {
     bio: '',
     primary_location_id: '',
     profile_picture_url: null,
+    marketing_opt_in: false,
+    marketing_opt_in_at: null,
   });
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
@@ -95,6 +98,11 @@ export default function Onboarding() {
         bio: profile?.bio || '',
         primary_location_id: profile?.primary_location_id || user.user_metadata?.primary_location_id || '',
         profile_picture_url: profile?.profile_picture_url || null,
+        marketing_opt_in: Boolean(profile?.marketing_opt_in ?? user.user_metadata?.marketing_opt_in),
+        marketing_opt_in_at:
+          profile?.marketing_opt_in_at ||
+          user.user_metadata?.marketing_opt_in_at ||
+          null,
       }));
 
       if (profile?.primary_location_id) {
@@ -174,10 +182,16 @@ export default function Onboarding() {
 
     try {
       const sanitizedBio = sanitizeString(profileData.bio || '', 2000);
+      const marketingOptIn = Boolean(profileData.marketing_opt_in);
+      const marketingOptInAt = marketingOptIn
+        ? new Date().toISOString()
+        : null;
       const payload = {
         ...profileData,
         display_name: sanitizeString(profileData.display_name, 100),
         bio: sanitizedBio,
+        marketing_opt_in: marketingOptIn,
+        marketing_opt_in_at: marketingOptInAt,
       };
 
       // Upload profile image if selected
@@ -205,6 +219,7 @@ export default function Onboarding() {
       pushDataLayerEvent('onboarding_profile_saved', {
         has_profile_photo: Boolean(payload.profile_picture_url),
         bio_length: payload.bio.length,
+        marketing_opt_in: Boolean(payload.marketing_opt_in),
       });
       
       setLoading(false);
@@ -517,6 +532,21 @@ export default function Onboarding() {
                   {profileData.bio.trim().length}/{MIN_PROFILE_BIO_LENGTH}+ characters recommended for ranking and trust
                 </p>
               </div>
+
+              <label className="flex items-start gap-3 rounded-lg border border-gray-700 bg-[#151515] px-3 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(profileData.marketing_opt_in)}
+                  onChange={(e) => setProfileData({
+                    ...profileData,
+                    marketing_opt_in: e.target.checked,
+                  })}
+                  className="mt-1 h-4 w-4 rounded border-gray-500 bg-[#222] text-red-600 focus:ring-red-500"
+                />
+                <span className="text-sm text-gray-300">
+                  {MARKETING_CONSENT_TEXT}
+                </span>
+              </label>
             </div>
 
             {/* Actions */}

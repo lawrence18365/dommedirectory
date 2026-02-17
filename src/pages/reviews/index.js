@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { getCurrentUser } from '../../services/auth';
+import { getProfile } from '../../services/profiles';
 import { getUserReviews, getProviderReviews } from '../../services/reviews';
 import { ReviewCard } from '../../components/ui/ReviewCard';
 import { Star, Loader2, MessageSquare } from 'lucide-react';
@@ -33,6 +34,8 @@ export default function Reviews() {
       return;
     }
     setUser(currentUser);
+    const { profile: userProfile } = await getProfile(currentUser.id);
+    setProfile(userProfile);
     setLoading(false);
   };
 

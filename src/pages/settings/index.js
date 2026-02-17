@@ -5,6 +5,8 @@ import Head from 'next/head';
 import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import Layout from '../../components/layout/Layout';
 import { useProfile } from '../../context/ProfileContext';
+import { updateProfile } from '../../services/profiles';
+import { MARKETING_CONSENT_TEXT } from '../../utils/constants';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -18,6 +20,7 @@ export default function SettingsPage() {
     contact_email: '',
     contact_phone: '',
     website: '',
+    marketing_opt_in: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -31,6 +34,7 @@ export default function SettingsPage() {
         contact_email: profile.contact_email || '',
         contact_phone: profile.contact_phone || '',
         website: profile.website || '',
+        marketing_opt_in: Boolean(profile.marketing_opt_in),
       });
     }
   }, [profile]);
@@ -53,8 +57,8 @@ export default function SettingsPage() {
   }, [user, profileLoading, router]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, type, value, checked } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const handleSubmit = async (e) => {
@@ -64,17 +68,17 @@ export default function SettingsPage() {
     setIsSubmitting(true);
     setMessage({ type: '', text: '' });
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        display_name: formData.display_name,
-        bio: formData.bio,
-        contact_email: formData.contact_email,
-        contact_phone: formData.contact_phone,
-        website: formData.website,
-        updated_at: new Date(),
-      })
-      .eq('id', user.id);
+    const { error } = await updateProfile(user.id, {
+      display_name: formData.display_name,
+      bio: formData.bio,
+      contact_email: formData.contact_email,
+      contact_phone: formData.contact_phone,
+      website: formData.website,
+      marketing_opt_in: Boolean(formData.marketing_opt_in),
+      marketing_opt_in_at: formData.marketing_opt_in
+        ? new Date().toISOString()
+        : null,
+    });
 
     if (error) {
       console.error('Error updating profile:', error);
@@ -212,6 +216,24 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Email Preferences */}
+          <div className="bg-[#1a1a1a] border border-white/5 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-white mb-4">Email Preferences</h2>
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-[#151515] px-4 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                id="marketing_opt_in"
+                name="marketing_opt_in"
+                checked={Boolean(formData.marketing_opt_in)}
+                onChange={handleChange}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-[#262626] text-red-600 focus:ring-red-500"
+              />
+              <span className="text-sm text-gray-300">
+                {MARKETING_CONSENT_TEXT}
+              </span>
+            </label>
           </div>
 
           {/* Account Info (read-only) */}

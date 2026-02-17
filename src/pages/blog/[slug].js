@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import DOMPurify from 'isomorphic-dompurify';
 import { fetchPostBySlug, fetchPosts } from '../../services/blog';
 import Layout from '../../components/layout/Layout';
 
@@ -71,6 +72,10 @@ export async function getStaticPaths() {
 
 export async function getStaticProps({ params }) {
   const post = await fetchPostBySlug(params.slug);
+
+  if (post && post.content) {
+    post.content = DOMPurify.sanitize(post.content);
+  }
 
   return {
     props: {

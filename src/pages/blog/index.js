@@ -77,8 +77,7 @@ export default function Blog() {
             <span className="px-4 py-2 text-gray-700">Page {page}</span>
             <button
               onClick={() => setPage((p) => p + 1)}
-              // Add a condition to disable 'Next' if there are likely no more posts
-              // disabled={posts.length < 10} // Assuming pageSize is 10
+              disabled={posts.length < 10}
               className="px-6 py-2 border border-red-600 text-red-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-600 hover:text-white transition duration-150 ease-in-out"
             >
               Next &rarr;

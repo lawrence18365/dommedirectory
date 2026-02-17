@@ -34,10 +34,10 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       // Custom fallback UI
       return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4 sm:px-6 lg:px-8">
           <div className="max-w-md w-full space-y-8 text-center">
             <div>
-              <div className="mx-auto h-24 w-24 bg-red-100 rounded-full flex items-center justify-center">
+              <div className="mx-auto h-24 w-24 bg-red-900/30 rounded-full flex items-center justify-center">
                 <svg
                   className="h-12 w-12 text-red-600"
                   fill="none"
@@ -53,10 +53,10 @@ class ErrorBoundary extends React.Component {
                   />
                 </svg>
               </div>
-              <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+              <h2 className="mt-6 text-3xl font-extrabold text-white">
                 Something went wrong
               </h2>
-              <p className="mt-2 text-sm text-gray-600">
+              <p className="mt-2 text-sm text-gray-400">
                 We apologize for the inconvenience. An unexpected error has occurred.
               </p>
             </div>
@@ -83,7 +83,7 @@ class ErrorBoundary extends React.Component {
               </button>
               <Link
                 href="/"
-                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                className="w-full flex justify-center py-2 px-4 border border-gray-700 rounded-md shadow-sm text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#262626] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0a0a0a] focus:ring-red-500"
               >
                 Go Home
               </Link>

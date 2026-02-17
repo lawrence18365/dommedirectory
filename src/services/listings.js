@@ -222,16 +222,19 @@ export const deleteMedia = async (mediaId) => {
 export const setPrimaryMedia = async (listingId, mediaId) => {
   try {
     // Unset all primary for this listing
-    await supabase
+    const { error: unsetError } = await supabase
       .from('media')
       .update({ is_primary: false })
       .eq('listing_id', listingId);
 
-    // Set new primary
+    if (unsetError) throw unsetError;
+
+    // Set new primary (scoped to same listing)
     const { error } = await supabase
       .from('media')
       .update({ is_primary: true })
-      .eq('id', mediaId);
+      .eq('id', mediaId)
+      .eq('listing_id', listingId);
 
     if (error) throw error;
     return { error: null };

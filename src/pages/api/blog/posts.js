@@ -5,6 +5,7 @@ import {
 } from '../../../services/auth';
 import { withErrorHandler, Errors, createValidationErrors } from '../../../utils/apiErrors';
 import { sanitizeString } from '../../../utils/validation';
+import { applyRateLimit } from '../../../utils/rateLimit';
 
 async function handler(req, res) {
   const token = getAuthTokenFromRequest(req);
@@ -16,10 +17,11 @@ async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
-    // Fetch all posts
+    // Fetch published posts only
     const { data, error } = await supabase
       .from('posts')
       .select('*')
+      .eq('status', 'published')
       .order('published_at', { ascending: false });
 
     if (error) {
@@ -33,6 +35,8 @@ async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    if (!applyRateLimit(req, res, { maxRequests: 10 })) return;
+
     // Validate required fields
     const { title, slug, content, excerpt, featured_image_url, status, published_at, category_id, meta_title, meta_description } = req.body;
     
