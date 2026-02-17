@@ -38,6 +38,19 @@ export const getLocationsGrouped = async () => {
     const { locations, error } = await getAllLocations();
     
     if (error) throw error;
+
+    const { data: listingsData, error: listingsError } = await supabase
+      .from('listings')
+      .select('location_id')
+      .eq('is_active', true);
+
+    if (listingsError) throw listingsError;
+
+    const listingCounts = (listingsData || []).reduce((acc, listing) => {
+      if (!listing.location_id) return acc;
+      acc[listing.location_id] = (acc[listing.location_id] || 0) + 1;
+      return acc;
+    }, {});
     
     // Group locations by country and state
     const grouped = locations.reduce((acc, location) => {
@@ -54,7 +67,8 @@ export const getLocationsGrouped = async () => {
       // Add city to state
       acc[location.country][location.state].push({
         id: location.id,
-        city: location.city // Remove slug reference
+        city: location.city,
+        listingCount: listingCounts[location.id] || 0
       });
       
       return acc;

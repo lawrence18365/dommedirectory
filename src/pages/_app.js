@@ -1,5 +1,7 @@
 import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { Cinzel, Inter } from 'next/font/google';
+import Head from 'next/head';
+import { useRouter } from 'next/router';
 import { ProfileProvider } from '../context/ProfileContext';
 import { ToastProvider } from '../context/ToastContext';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
@@ -21,11 +23,39 @@ const inter = Inter({
   display: 'swap',
 });
 
+const NOINDEX_EXACT_PATHS = new Set([
+  '/dashboard',
+  '/settings',
+  '/profile',
+  '/verification',
+  '/messages',
+  '/bookings',
+  '/analytics',
+  '/onboarding',
+  '/listings/create',
+  '/live-cams',
+]);
+
+const NOINDEX_PREFIX_PATHS = ['/auth', '/admin', '/listings/edit'];
+
+const shouldNoindex = (pathname) => {
+  if (!pathname) return false;
+  if (NOINDEX_EXACT_PATHS.has(pathname)) return true;
+  return NOINDEX_PREFIX_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+};
+
 function MyApp({ Component, pageProps }) {
+  const router = useRouter();
   const getLayout = Component.getLayout || ((page) => page);
+  const noindex = shouldNoindex(router.pathname);
 
   return (
     <>
+      {noindex && (
+        <Head>
+          <meta name="robots" content="noindex,nofollow,noarchive" />
+        </Head>
+      )}
       <style jsx global>{`
         :root {
           --font-heading: ${cinzel.style.fontFamily};

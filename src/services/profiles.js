@@ -1,6 +1,10 @@
 import { supabase } from '../utils/supabase';
 import { uploadProfilePicture } from './storage';
 
+const MIN_PROFILE_BIO_LENGTH = 80;
+const MIN_LISTING_TITLE_LENGTH = 10;
+const MIN_LISTING_DESCRIPTION_LENGTH = 120;
+
 /**
  * Get profile by ID
  * @param {string} profileId 
@@ -33,21 +37,54 @@ export const getProfile = async (profileId) => {
  */
 export const updateProfile = async (profileId, profileData) => {
   try {
+    const updatePayload = {
+      id: profileId,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'display_name')) {
+      updatePayload.display_name = profileData.display_name;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'bio')) {
+      updatePayload.bio = profileData.bio;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'primary_location_id')) {
+      updatePayload.primary_location_id = profileData.primary_location_id;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'secondary_locations')) {
+      updatePayload.secondary_locations = profileData.secondary_locations || [];
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'contact_email')) {
+      updatePayload.contact_email = profileData.contact_email;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'contact_phone')) {
+      updatePayload.contact_phone = profileData.contact_phone;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'website')) {
+      updatePayload.website = profileData.website;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'social_links')) {
+      updatePayload.social_links = profileData.social_links || {};
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'services_offered')) {
+      updatePayload.services_offered = profileData.services_offered || {};
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'profile_picture_url')) {
+      updatePayload.profile_picture_url = profileData.profile_picture_url;
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        display_name: profileData.display_name,
-        bio: profileData.bio,
-        primary_location_id: profileData.primary_location_id,
-        secondary_locations: profileData.secondary_locations || [],
-        contact_email: profileData.contact_email,
-        contact_phone: profileData.contact_phone,
-        website: profileData.website,
-        social_links: profileData.social_links || {},
-        services_offered: profileData.services_offered || {},
-        updated_at: new Date(),
-      })
-      .eq('id', profileId);
+      .upsert(updatePayload, { onConflict: 'id' });
 
     if (error) throw error;
     return { error: null };
@@ -70,8 +107,14 @@ export const updateProfilePicture = async (profileId, file) => {
     // Update profile with new picture URL
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ profile_picture_url: url })
-      .eq('id', profileId);
+      .upsert(
+        {
+          id: profileId,
+          profile_picture_url: url,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
     if (updateError) throw updateError;
     return { url, error: null };
@@ -172,4 +215,72 @@ export const checkVerificationStatus = async (profileId) => {
 export const uploadVerificationDocument = async (profileId, file) => {
   const { uploadVerificationDocument: uploadDoc } = await import('./storage');
   return uploadDoc(profileId, file);
+};
+
+/**
+ * Determine whether a user has completed onboarding.
+ * Criteria:
+ * - Profile exists
+ * - Display name present
+ * - Primary location selected
+ * - Bio has enough unique detail
+ * - At least one detailed listing created
+ */
+export const getOnboardingStatus = async (profileId) => {
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, display_name, primary_location_id, bio')
+      .eq('id', profileId)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+
+    const { data: listings, error: listingsError } = await supabase
+      .from('listings')
+      .select('id, title, description')
+      .eq('profile_id', profileId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (listingsError) throw listingsError;
+
+    const listingsCount = listings?.length || 0;
+    const hasDisplayName = Boolean(profile?.display_name?.trim());
+    const hasPrimaryLocation = Boolean(profile?.primary_location_id);
+    const hasBio =
+      Boolean(profile?.bio?.trim()) && profile.bio.trim().length >= MIN_PROFILE_BIO_LENGTH;
+    const hasListing = listingsCount > 0;
+    const hasDetailedListing = (listings || []).some((listing) => {
+      const title = listing?.title?.trim() || '';
+      const description = listing?.description?.trim() || '';
+      return (
+        title.length >= MIN_LISTING_TITLE_LENGTH &&
+        description.length >= MIN_LISTING_DESCRIPTION_LENGTH
+      );
+    });
+
+    return {
+      isComplete: hasDisplayName && hasPrimaryLocation && hasBio && hasDetailedListing,
+      hasDisplayName,
+      hasPrimaryLocation,
+      hasBio,
+      hasListing,
+      hasDetailedListing,
+      listingsCount,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Error checking onboarding status:', error.message);
+    return {
+      isComplete: false,
+      hasDisplayName: false,
+      hasPrimaryLocation: false,
+      hasBio: false,
+      hasListing: false,
+      hasDetailedListing: false,
+      listingsCount: 0,
+      error,
+    };
+  }
 };

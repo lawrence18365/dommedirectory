@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { signIn } from '../../services/auth';
+import { getOnboardingStatus } from '../../services/profiles';
 import Layout from '../../components/layout/Layout';
 import { isValidEmail, sanitizeString } from '../../utils/validation'; // Assuming Layout component exists
 
@@ -40,16 +41,30 @@ const LoginPage = () => {
       console.error('Sign in error:', signInError);
       setLoading(false);
     } else {
-      // Sign in successful, redirect user (e.g., to dashboard or intended page)
-      // Check if there's a 'redirect' query param or default to dashboard
-      const redirectParam = Array.isArray(router.query.redirect)
-        ? router.query.redirect[0]
-        : router.query.redirect;
-      const redirectPath = redirectParam && redirectParam.startsWith('/')
-        ? redirectParam
-        : '/dashboard';
-      router.push(redirectPath);
-      // No need to setLoading(false) here as we are navigating away
+      try {
+        const userId = data?.user?.id;
+        if (userId) {
+          const onboarding = await getOnboardingStatus(userId);
+          if (!onboarding.isComplete) {
+            router.push('/onboarding');
+            return;
+          }
+        }
+
+        // Sign in successful, redirect user (e.g., to dashboard or intended page)
+        // Check if there's a 'redirect' query param or default to dashboard
+        const redirectParam = Array.isArray(router.query.redirect)
+          ? router.query.redirect[0]
+          : router.query.redirect;
+        const redirectPath = redirectParam && redirectParam.startsWith('/')
+          ? redirectParam
+          : '/dashboard';
+        router.push(redirectPath);
+        // No need to setLoading(false) here as we are navigating away
+      } catch (err) {
+        console.error('Post-login onboarding check failed:', err);
+        router.push('/dashboard');
+      }
     }
   };
 

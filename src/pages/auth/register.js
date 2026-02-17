@@ -178,7 +178,7 @@ const RegisterPage = () => {
                 Check your email <strong>{email}</strong> to confirm your account.
               </p>
               <p className="text-gray-400 text-xs">
-                After confirming, you can <Link href="/auth/login" className="text-green-400 hover:underline">log in here</Link>.
+                After confirming, <Link href="/auth/login" className="text-green-400 hover:underline">log in here</Link> and you&apos;ll continue onboarding.
               </p>
             </div>
           )}

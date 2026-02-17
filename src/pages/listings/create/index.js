@@ -6,7 +6,7 @@ import Layout from '../../../components/layout/Layout';
 import Link from 'next/link';
 import { getAllLocations } from '../../../services/locations';
 import { createListing, uploadListingMedia } from '../../../services/listings';
-import { getProfile } from '../../../services/profiles';
+import { getOnboardingStatus, getProfile } from '../../../services/profiles';
 import { validateListingData, sanitizeString } from '../../../utils/validation';
 
 export default function CreateListing() {
@@ -44,6 +44,12 @@ export default function CreateListing() {
 
     async function loadInitialData() {
       try {
+        const onboarding = await getOnboardingStatus(user.id);
+        if (!onboarding.isComplete) {
+          router.replace('/onboarding');
+          return;
+        }
+
         // Load profile
         const { profile: profileData, error: profileError } = await getProfile(user.id);
         if (profileError) throw profileError;

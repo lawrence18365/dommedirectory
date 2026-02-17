@@ -1,61 +1,102 @@
-import { getAllLocations } from '../services/locations';
+import { supabase } from '../utils/supabase';
+import { slugify } from '../utils/slugify';
 
-const BASE_URL = 'https://dommedirectory.com';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dommedirectory.com';
 
-function generateSitemap(listings, cities) {
-  const pages = [
-    { url: '', priority: '1.0', changefreq: 'daily' },
-    { url: '/usa', priority: '0.9', changefreq: 'daily' },
-    { url: '/cities', priority: '0.9', changefreq: 'weekly' },
-    { url: '/auth/login', priority: '0.5', changefreq: 'monthly' },
-    { url: '/auth/register', priority: '0.5', changefreq: 'monthly' },
-  ];
+const STATIC_PAGES = [
+  { url: '/', priority: '1.0', changefreq: 'daily' },
+  { url: '/cities', priority: '0.9', changefreq: 'daily' },
+  { url: '/usa', priority: '0.8', changefreq: 'weekly' },
+  { url: '/blog', priority: '0.8', changefreq: 'daily' },
+  { url: '/reviews', priority: '0.7', changefreq: 'weekly' },
+  { url: '/videos', priority: '0.7', changefreq: 'weekly' },
+  { url: '/about', priority: '0.5', changefreq: 'monthly' },
+  { url: '/contact', priority: '0.5', changefreq: 'monthly' },
+  { url: '/safety', priority: '0.6', changefreq: 'monthly' },
+];
 
-  // Add city pages
-  cities.forEach(city => {
-    pages.push({
-      url: `/location/${city.slug}`,
-      priority: '0.8',
-      changefreq: 'daily'
-    });
-  });
+const toIso = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+};
 
-  // Add listing pages
-  listings.forEach(listing => {
-    pages.push({
-      url: `/listings/${listing.id}`,
-      priority: '0.7',
-      changefreq: 'weekly'
-    });
-  });
-
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+const buildSitemap = (entries) => `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${pages.map(page => `  <url>
-    <loc>${BASE_URL}${page.url}</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>${page.changefreq}</changefreq>
-    <priority>${page.priority}</priority>
-  </url>`).join('\n')}
+${entries
+  .map(
+    ({ url, priority, changefreq, lastmod }) => `  <url>
+    <loc>${siteUrl}${url}</loc>
+    ${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}
+    <changefreq>${changefreq}</changefreq>
+    <priority>${priority}</priority>
+  </url>`
+  )
+  .join('\n')}
 </urlset>`;
-
-  return sitemap;
-}
 
 export async function getServerSideProps({ res }) {
   try {
-    // Fetch listings and cities from your database
-    const { data: listings } = await import('../utils/supabase').then(m => 
-      m.supabase.from('listings').select('id').eq('is_active', true)
-    );
-    
-    const { locations: cities } = await getAllLocations();
-    const citySlugs = cities?.map(c => ({ slug: c.city.toLowerCase().replace(/\s+/g, '-') })) || [];
+    const [postsResult, listingsResult, locationsResult] = await Promise.all([
+      supabase
+        .from('posts')
+        .select('slug, updated_at, published_at, created_at')
+        .eq('status', 'published'),
+      supabase
+        .from('listings')
+        .select('id, updated_at, created_at')
+        .eq('is_active', true),
+      supabase
+        .from('locations')
+        .select('city, is_active, updated_at, created_at')
+        .eq('is_active', true),
+    ]);
 
-    const sitemap = generateSitemap(listings || [], citySlugs);
+    const staticEntries = STATIC_PAGES.map((page) => ({
+      ...page,
+      lastmod: toIso(new Date()),
+    }));
 
-    res.setHeader('Content-Type', 'text/xml');
-    res.write(sitemap);
+    const blogEntries = (postsResult.data || []).map((post) => ({
+      url: `/blog/${post.slug}`,
+      priority: '0.6',
+      changefreq: 'weekly',
+      lastmod: toIso(post.updated_at || post.published_at || post.created_at),
+    }));
+
+    const seenLocationSlugs = new Set();
+    const locationEntries = (locationsResult.data || [])
+      .map((location) => ({
+        slug: slugify(location.city || ''),
+        lastmod: toIso(location.updated_at || location.created_at),
+      }))
+      .filter((location) => location.slug)
+      .filter((location) => {
+        if (seenLocationSlugs.has(location.slug)) return false;
+        seenLocationSlugs.add(location.slug);
+        return true;
+      })
+      .map((location) => ({
+        url: `/location/${location.slug}`,
+        priority: '0.7',
+        changefreq: 'daily',
+        lastmod: location.lastmod,
+      }));
+
+    const listingEntries = (listingsResult.data || []).map((listing) => ({
+      url: `/listings/${listing.id}`,
+      priority: '0.7',
+      changefreq: 'weekly',
+      lastmod: toIso(listing.updated_at || listing.created_at),
+    }));
+
+    const sitemapEntries = [...staticEntries, ...blogEntries, ...locationEntries, ...listingEntries];
+    const xml = buildSitemap(sitemapEntries);
+
+    res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate');
+    res.write(xml);
     res.end();
 
     return { props: {} };

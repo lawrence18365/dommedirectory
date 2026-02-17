@@ -42,8 +42,6 @@ export default function SEO({
       <meta name="geo.position" content="39.8283;-98.5795" />
       <meta name="ICBM" content="39.8283, -98.5795" />
       
-      {/* Language */}
-      <html lang="en-US" />
       <meta property="og:locale" content="en_US" />
       
       {/* JSON-LD Structured Data */}
@@ -84,6 +82,36 @@ export function generateListingSchema(listing) {
       '@type': 'City',
       name: listing.locations?.city
     }
+  };
+}
+
+// Generate ProfilePage schema for listing pages
+export function generateProfilePageSchema(listing) {
+  const profile = listing?.profiles || {};
+  const location = listing?.locations || {};
+  const profileName = profile.display_name || listing?.title || 'Profile';
+  const listingUrl = `https://dommedirectory.com/listings/${listing?.id}`;
+  const imageUrl = listing?.media?.[0]?.storage_path || profile.profile_picture_url || undefined;
+  const description = (listing?.description || profile?.bio || '').trim();
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ProfilePage',
+    url: listingUrl,
+    name: `${profileName} Profile`,
+    description: description || undefined,
+    mainEntity: {
+      '@type': 'Person',
+      name: profileName,
+      description: description || undefined,
+      image: imageUrl,
+      url: listingUrl,
+      homeLocation: {
+        '@type': 'Place',
+        name: [location.city, location.state, location.country].filter(Boolean).join(', '),
+      },
+      sameAs: Object.values(profile?.social_links || {}).filter(Boolean),
+    },
   };
 }
 

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import Layout from '../components/layout/Layout';
 import SEO from '../components/ui/SEO';
 import Card from '../components/ui/Card';
@@ -6,39 +5,8 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import { Radio, Users, Lock, Sparkles, Clock, Video } from 'lucide-react';
 
-const LIVE_STREAMS = [
-  {
-    id: 1,
-    domme: 'MistressViper',
-    title: 'Live Q&A Session',
-    viewers: 156,
-    thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=225&fit=crop',
-    tags: ['Q&A', 'Interactive'],
-  },
-  {
-    id: 2,
-    domme: 'GoddessLilith',
-    title: 'Dungeon Tour Live',
-    viewers: 89,
-    thumbnail: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=225&fit=crop',
-    tags: ['Tour', 'Educational'],
-  },
-];
-
-const UPCOMING = [
-  {
-    id: 1,
-    domme: 'DominaAlexis',
-    title: 'Bondage Workshop',
-    scheduled: 'Today, 8:00 PM EST',
-  },
-  {
-    id: 2,
-    domme: 'MistressVelvet',
-    title: 'Ask Me Anything',
-    scheduled: 'Tomorrow, 3:00 PM EST',
-  },
-];
+const LIVE_STREAMS = [];
+const UPCOMING = [];
 
 const FEATURES = [
   {
@@ -89,7 +57,11 @@ function LiveStreamCard({ stream }) {
 export default function LiveCams() {
   return (
     <Layout>
-      <SEO title="Live Cams - DommeDirectory" description="Live cam sessions with professional dommes." />
+      <SEO
+        title="Live Cams - DommeDirectory"
+        description="Live cam sessions with professional dommes."
+        noindex
+      />
       
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Hero */}
@@ -147,22 +119,30 @@ export default function LiveCams() {
             <Clock className="w-6 h-6 text-red-600" />
             <h2 className="text-2xl font-bold text-white">Upcoming</h2>
           </div>
-          <div className="grid md:grid-cols-2 gap-4 max-w-3xl">
-            {UPCOMING.map((session) => (
-              <Card key={session.id} className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-white font-semibold">{session.title}</h3>
-                  <p className="text-red-600 text-sm">{session.domme}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-gray-500 text-sm flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {session.scheduled}
-                  </span>
-                </div>
-              </Card>
-            ))}
-          </div>
+          {UPCOMING.length > 0 ? (
+            <div className="grid md:grid-cols-2 gap-4 max-w-3xl">
+              {UPCOMING.map((session) => (
+                <Card key={session.id} className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold">{session.title}</h3>
+                    <p className="text-red-600 text-sm">{session.domme}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-gray-500 text-sm flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {session.scheduled}
+                    </span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="text-center py-8 max-w-3xl">
+              <Clock className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+              <h3 className="text-white font-semibold mb-2">No Upcoming Sessions</h3>
+              <p className="text-gray-400 text-sm">Upcoming live sessions will appear here.</p>
+            </Card>
+          )}
         </div>
 
         {/* CTA */}

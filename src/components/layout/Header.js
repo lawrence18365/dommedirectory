@@ -21,7 +21,6 @@ export default function Header() {
     { name: 'Search', href: '/cities', current: router.pathname === '/cities' || router.pathname.startsWith('/location/') },
     { name: 'Reviews', href: '/reviews', current: router.pathname === '/reviews' },
     { name: 'Videos', href: '/videos', current: router.pathname === '/videos' },
-    { name: 'Live Cams', href: '/live-cams', current: router.pathname === '/live-cams' },
   ];
 
   const userNavigation = [

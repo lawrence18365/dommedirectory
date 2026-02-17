@@ -4,22 +4,11 @@ import Layout from '../../components/layout/Layout';
 import SEO, { generateWebsiteSchema } from '../../components/ui/SEO';
 import { Search, MapPin, TrendingUp, Star, ChevronRight } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
+import { slugify } from '../../utils/slugify';
 
-// Top US cities for domme services
-const usCities = [
-  { name: 'New York', state: 'NY', slug: 'new-york', count: 189, image: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=600&h=400&fit=crop' },
-  { name: 'Los Angeles', state: 'CA', slug: 'los-angeles', count: 134, image: 'https://images.unsplash.com/photo-1503891450247-ee5f8ec46dc3?w=600&h=400&fit=crop' },
-  { name: 'Chicago', state: 'IL', slug: 'chicago', count: 87, image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=600&h=400&fit=crop' },
-  { name: 'Miami', state: 'FL', slug: 'miami', count: 76, image: 'https://images.unsplash.com/photo-1514214246283-d427a95c5d2f?w=600&h=400&fit=crop' },
-  { name: 'Houston', state: 'TX', slug: 'houston', count: 65, image: 'https://images.unsplash.com/photo-1470082719408-b2843ab5c9ab?w=600&h=400&fit=crop' },
-  { name: 'Las Vegas', state: 'NV', slug: 'las-vegas', count: 92, image: 'https://images.unsplash.com/photo-1500916434205-0c77489c6cf7?w=600&h=400&fit=crop' },
-  { name: 'San Francisco', state: 'CA', slug: 'san-francisco', count: 58, image: 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=600&h=400&fit=crop' },
-  { name: 'Seattle', state: 'WA', slug: 'seattle', count: 43, image: 'https://images.unsplash.com/photo-1502175353174-a7a70e73b362?w=600&h=400&fit=crop' },
-  { name: 'Boston', state: 'MA', slug: 'boston', count: 38, image: 'https://images.unsplash.com/photo-1506606401543-2e73709cebb4?w=600&h=400&fit=crop' },
-  { name: 'Atlanta', state: 'GA', slug: 'atlanta', count: 41, image: 'https://images.unsplash.com/photo-1575917649705-5b59aaa12e6b?w=600&h=400&fit=crop' },
-  { name: 'Dallas', state: 'TX', slug: 'dallas', count: 52, image: 'https://images.unsplash.com/photo-1531218150217-54595bc2b934?w=600&h=400&fit=crop' },
-  { name: 'Phoenix', state: 'AZ', slug: 'phoenix', count: 29, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&h=400&fit=crop' },
-];
+const getCityImage = (cityName) => {
+  return `https://source.unsplash.com/600x400/?city,${encodeURIComponent(cityName)}`;
+};
 
 const services = [
   'BDSM', 'Bondage', 'Discipline', 'Domination', 'Submission', 
@@ -27,6 +16,7 @@ const services = [
 ];
 
 export default function USAPage() {
+  const [usCities, setUsCities] = useState([]);
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,26 +36,50 @@ export default function USAPage() {
           media(storage_path, is_primary)
         `)
         .eq('is_active', true)
-        .eq('locations.country', 'United States')
+        .in('locations.country', ['United States', 'USA'])
         .order('created_at', { ascending: false })
-        .limit(8);
+        .limit(300);
 
       if (error) throw error;
 
       if (data) {
-        setListings(data.map(listing => ({
+        const transformedListings = data.map(listing => ({
           id: listing.id,
           display_name: listing.profiles?.display_name || 'Anonymous',
           city: listing.locations?.city,
           state: listing.locations?.state,
           image: listing.media?.find(m => m.is_primary)?.storage_path || 
                  listing.media?.[0]?.storage_path || 
-                 listing.profiles?.profile_picture_url,
+                 listing.profiles?.profile_picture_url ||
+                 null,
           is_verified: listing.profiles?.is_verified,
-        })));
+        }));
+
+        const cityMap = new Map();
+        transformedListings.forEach((listing) => {
+          if (!listing.city) return;
+          const key = `${listing.city}|${listing.state || ''}`;
+          const existing = cityMap.get(key) || {
+            name: listing.city,
+            state: listing.state || '',
+            slug: slugify(listing.city),
+            count: 0,
+            image: getCityImage(listing.city),
+          };
+          existing.count += 1;
+          cityMap.set(key, existing);
+        });
+
+        const rankedCities = [...cityMap.values()]
+          .sort((a, b) => b.count - a.count);
+
+        setUsCities(rankedCities);
+        setListings(transformedListings.slice(0, 8));
       }
     } catch (err) {
       console.error('Error fetching listings:', err);
+      setUsCities([]);
+      setListings([]);
     } finally {
       setLoading(false);
     }
@@ -130,31 +144,37 @@ export default function USAPage() {
             <span className="text-gray-500">{usCities.length} cities</span>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {usCities.map((city) => (
-              <Link
-                key={city.slug}
-                href={`/location/${city.slug}`}
-                className="group relative rounded-lg overflow-hidden hover:ring-2 hover:ring-red-600 transition-all"
-              >
-                <div className="aspect-[3/2]">
-                  <img
-                    src={city.image}
-                    alt={`${city.name}, ${city.state}`}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                </div>
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <h3 className="text-white font-bold text-lg">{city.name}</h3>
-                  <p className="text-gray-300 text-sm">{city.state}</p>
-                  <p className="text-red-500 text-xs font-medium mt-1">
-                    {city.count} listings
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
+          {usCities.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {usCities.map((city) => (
+                <Link
+                  key={`${city.slug}-${city.state}`}
+                  href={`/location/${city.slug}`}
+                  className="group relative rounded-lg overflow-hidden hover:ring-2 hover:ring-red-600 transition-all"
+                >
+                  <div className="aspect-[3/2]">
+                    <img
+                      src={city.image}
+                      alt={`${city.name}, ${city.state}`}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 p-4">
+                    <h3 className="text-white font-bold text-lg">{city.name}</h3>
+                    <p className="text-gray-300 text-sm">{city.state}</p>
+                    <p className="text-red-500 text-xs font-medium mt-1">
+                      {city.count} listings
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-[#111] border border-gray-800 rounded-lg p-8 text-center text-gray-400">
+              No US city listing data available yet.
+            </div>
+          )}
         </div>
 
         {/* Featured US Listings */}
@@ -175,7 +195,7 @@ export default function USAPage() {
                 <div key={i} className="bg-[#1a1a1a] rounded-lg overflow-hidden animate-pulse aspect-[3/4]" />
               ))}
             </div>
-          ) : (
+          ) : listings.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {listings.map((listing) => (
                 <Link
@@ -184,11 +204,15 @@ export default function USAPage() {
                   className="group relative bg-[#1a1a1a] rounded-lg overflow-hidden hover:ring-2 hover:ring-red-600 transition-all"
                 >
                   <div className="aspect-[3/4]">
-                    <img
-                      src={listing.image || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop'}
-                      alt={listing.display_name}
-                      className="w-full h-full object-cover"
-                    />
+                    {listing.image ? (
+                      <img
+                        src={listing.image}
+                        alt={listing.display_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-800" />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                     {listing.is_verified && (
                       <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">
@@ -202,6 +226,10 @@ export default function USAPage() {
                   </div>
                 </Link>
               ))}
+            </div>
+          ) : (
+            <div className="bg-[#111] border border-gray-800 rounded-lg p-8 text-center text-gray-400">
+              No featured US listings available yet.
             </div>
           )}
         </div>

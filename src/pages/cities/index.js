@@ -96,14 +96,20 @@ export default function CitiesDirectory({ initialLocations, error }) {
     });
   }
 
-  // Get all cities flattened for "All Cities" view
-  const getAllCities = () => {
+  // Get all cities flattened for list and stat calculations
+  const getAllCities = (query = '') => {
     const cities = [];
+    const normalizedQuery = query.trim().toLowerCase();
+    const hasQuery = normalizedQuery.length > 0;
     if (locationsData.locations) {
       Object.entries(locationsData.locations).forEach(([country, states]) => {
         Object.entries(states).forEach(([state, stateCities]) => {
           stateCities.forEach(city => {
-            if (city.city.toLowerCase().includes(searchTerm.toLowerCase())) {
+            const matchesQuery =
+              !hasQuery ||
+              city.city.toLowerCase().includes(normalizedQuery) ||
+              state.toLowerCase().includes(normalizedQuery);
+            if (matchesQuery) {
               cities.push({ ...city, country, state });
             }
           });
@@ -113,23 +119,22 @@ export default function CitiesDirectory({ initialLocations, error }) {
     return cities;
   };
 
-  // Get popular cities (mock data - would come from API)
-  const popularCities = [
-    { name: 'Toronto', count: 245, country: 'Canada' },
-    { name: 'New York', count: 189, country: 'USA' },
-    { name: 'Vancouver', count: 156, country: 'Canada' },
-    { name: 'Los Angeles', count: 134, country: 'USA' },
-    { name: 'Montreal', count: 98, country: 'Canada' },
-  ];
-
   const handleSearch = (e) => {
     e.preventDefault();
     // Search is handled reactively by the filter
   };
 
-  // Get cities to display
-  const displayCities = searchTerm ? getAllCities() : [];
+  const allCities = getAllCities();
+  const displayCities = searchTerm ? getAllCities(searchTerm) : [];
   const isSearching = searchTerm.length > 0;
+  const popularCities = allCities
+    .filter((city) => city.listingCount > 0)
+    .sort((a, b) => b.listingCount - a.listingCount)
+    .slice(0, 5);
+  const totalActiveListings = allCities.reduce(
+    (acc, city) => acc + (city.listingCount || 0),
+    0
+  );
 
   return (
     <Layout>
@@ -306,29 +311,33 @@ export default function CitiesDirectory({ initialLocations, error }) {
                   <h3 className="text-white font-semibold">Popular Cities</h3>
                 </div>
                 <div className="space-y-2">
-                  {popularCities.map((city, index) => (
-                    <Link
-                      key={city.name}
-                      href={`/location/${slugify(city.name)}`}
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-800 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-gray-600 font-bold text-sm w-4">
-                          {index + 1}
-                        </span>
-                        <div>
-                          <p className="text-white font-medium text-sm group-hover:text-red-500 transition-colors">
-                            {city.name}
-                          </p>
-                          <p className="text-gray-500 text-xs">{city.country}</p>
+                  {popularCities.length > 0 ? (
+                    popularCities.map((city, index) => (
+                      <Link
+                        key={city.id}
+                        href={`/location/${slugify(city.city)}`}
+                        className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-800 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-600 font-bold text-sm w-4">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="text-white font-medium text-sm group-hover:text-red-500 transition-colors">
+                              {city.city}
+                            </p>
+                            <p className="text-gray-500 text-xs">{city.country}</p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-500 text-xs">
-                        <Users className="w-3 h-3" />
-                        {city.count}
-                      </div>
-                    </Link>
-                  ))}
+                        <div className="flex items-center gap-1 text-gray-500 text-xs">
+                          <Users className="w-3 h-3" />
+                          {city.listingCount}
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No popular cities yet.</p>
+                  )}
                 </div>
               </div>
 
@@ -355,7 +364,7 @@ export default function CitiesDirectory({ initialLocations, error }) {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400 text-sm">Active Listings</span>
-                    <span className="text-white font-bold">1,234+</span>
+                    <span className="text-white font-bold">{totalActiveListings}</span>
                   </div>
                 </div>
               </div>
@@ -394,10 +403,6 @@ export default function CitiesDirectory({ initialLocations, error }) {
 // City Card Component
 function CityCard({ city, showState = false }) {
   const cityImage = getCityImage(city.city);
-  const seed = String(city.id || city.city)
-    .split('')
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const listingCount = 5 + (seed % 50);
 
   return (
     <Link
@@ -424,7 +429,7 @@ function CityCard({ city, showState = false }) {
             <p className="text-gray-400 text-xs">{city.state}, {city.country}</p>
           )}
           <div className="flex items-center gap-1 mt-1">
-            <span className="text-red-500 text-xs font-medium">{listingCount} listings</span>
+            <span className="text-red-500 text-xs font-medium">{city.listingCount || 0} listings</span>
           </div>
         </div>
       </div>

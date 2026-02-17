@@ -1,128 +1,100 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import Layout from '../components/layout/Layout';
 import SEO, { generateWebsiteSchema, generateOrganizationSchema } from '../components/ui/SEO';
 import { Search, MapPin, Video, Star, Heart } from 'lucide-react';
 import { supabase } from '../utils/supabase';
 
-// Static city data for sidebar (deterministic, no random)
-const popularCities = [
-  { name: 'Toronto', count: 245, country: 'Canada' },
-  { name: 'New York', count: 189, country: 'USA' },
-  { name: 'Vancouver', count: 156, country: 'Canada' },
-  { name: 'Los Angeles', count: 134, country: 'USA' },
-  { name: 'Montreal', count: 98, country: 'Canada' },
-  { name: 'Chicago', count: 87, country: 'USA' },
-  { name: 'Miami', count: 76, country: 'USA' },
-];
-
-// Mock data for featured dommes (will be replaced with real data)
-const mockFeaturedDommes = [
-  { id: 1, display_name: 'MistressV', city: 'Toronto', country: 'Canada', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop', is_verified: true },
-  { id: 2, display_name: 'GoddessAlex', city: 'Vancouver', country: 'Canada', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=500&fit=crop', is_verified: true },
-  { id: 3, display_name: 'DommeLuna', city: 'Montreal', country: 'Canada', is_online: false, profile_picture_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=500&fit=crop', is_verified: false },
-  { id: 4, display_name: 'QueenRaven', city: 'New York', country: 'USA', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=500&fit=crop', is_verified: true },
-  { id: 5, display_name: 'LadyScarlet', city: 'Los Angeles', country: 'USA', is_online: false, profile_picture_url: 'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=400&h=500&fit=crop', is_verified: true },
-  { id: 6, display_name: 'MistressIvy', city: 'Chicago', country: 'USA', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&h=500&fit=crop', is_verified: false },
-  { id: 7, display_name: 'GoddessMaya', city: 'Miami', country: 'USA', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=500&fit=crop', is_verified: true },
-  { id: 8, display_name: 'DominaZara', city: 'Seattle', country: 'USA', is_online: false, profile_picture_url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=500&fit=crop', is_verified: true },
-  { id: 9, display_name: 'EmpressJade', city: 'Toronto', country: 'Canada', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=500&fit=crop', is_verified: true },
-  { id: 10, display_name: 'LadyViper', city: 'Vancouver', country: 'Canada', is_online: false, profile_picture_url: 'https://images.unsplash.com/photo-1519699047748-de8e457a634e?w=400&h=500&fit=crop', is_verified: false },
-  { id: 11, display_name: 'MistressOnyx', city: 'Montreal', country: 'Canada', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=500&fit=crop', is_verified: true },
-  { id: 12, display_name: 'GoddessSage', city: 'New York', country: 'USA', is_online: true, profile_picture_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=500&fit=crop', is_verified: true },
-];
-
-// Domme of the Day
-const dommeOfTheDay = {
-  id: 99,
-  display_name: 'MistressSeraphina',
-  age: 28,
-  city: 'Dubai',
-  country: 'UAE',
-  profile_picture_url: 'https://images.unsplash.com/photo-1526510747491-58f928ec870f?w=600&h=800&fit=crop',
-  tagline: 'Elite Dominatrix & Fetish Specialist',
-};
-
-export default function Home() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dommes, setDommes] = useState(mockFeaturedDommes);
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  // Prevent hydration mismatch by rendering random elements only after mount
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Fetch listings from Supabase (not just profiles)
-  useEffect(() => {
-    const fetchListings = async () => {
-      setLoading(true);
-      try {
-        // Get active listings with profile and location data
-        const { data, error } = await supabase
-          .from('listings')
-          .select(`
-            id,
-            title,
-            description,
-            is_active,
-            profiles!inner(id, display_name, profile_picture_url, is_verified),
-            locations!inner(city, country),
-            media(storage_path, is_primary)
-          `)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(12);
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          // Transform data to match our format
-          // Note: is_online is set to false initially to avoid hydration mismatch
-          // It will be randomized on client after mount
-          const transformed = data.map((listing, index) => {
-            // Get primary image or first image
-            const primaryMedia = listing.media?.find(m => m.is_primary) || listing.media?.[0];
-            const imageUrl = primaryMedia?.storage_path || listing.profiles?.profile_picture_url;
-            
-            return {
-              id: listing.id,
-              display_name: listing.profiles?.display_name || 'Anonymous',
-              city: listing.locations?.city || 'Unknown',
-              country: listing.locations?.country || '',
-              is_online: false, // Will be set after mount
-              profile_picture_url: imageUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop',
-              is_verified: listing.profiles?.is_verified,
-              title: listing.title,
-            };
-          });
-          setDommes(transformed);
-          
-          // Randomize online status after mount (client-side only)
-          setTimeout(() => {
-            setDommes(prev => prev.map(d => ({
-              ...d,
-              is_online: Math.random() > 0.6
-            })));
-          }, 100);
-        }
-      } catch (err) {
-        console.error('Error fetching listings:', err);
-        // Keep using mock data if fetch fails
-      } finally {
-        setLoading(false);
-      }
+function mapListingsForHomepage(listings = []) {
+  return listings.map((listing) => {
+    const primaryMedia = listing.media?.find((m) => m.is_primary) || listing.media?.[0];
+    return {
+      id: listing.id,
+      display_name: listing.profiles?.display_name || 'Anonymous',
+      city: listing.locations?.city || 'Unknown',
+      country: listing.locations?.country || '',
+      profile_picture_url: primaryMedia?.storage_path || listing.profiles?.profile_picture_url || null,
+      is_verified: Boolean(listing.profiles?.is_verified),
+      title: listing.title || '',
+      description: listing.description || '',
     };
+  });
+}
 
-    fetchListings();
-  }, []);
+function mapPopularCities(cityRows = []) {
+  const cityMap = new Map();
+  cityRows.forEach((row) => {
+    if (!row.location_id || !row.locations) return;
+    const current = cityMap.get(row.location_id) || {
+      name: row.locations.city,
+      country: row.locations.country,
+      count: 0,
+    };
+    current.count += 1;
+    cityMap.set(row.location_id, current);
+  });
+
+  return [...cityMap.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 7);
+}
+
+export async function getServerSideProps() {
+  try {
+    const [listingsResult, cityCountsResult] = await Promise.all([
+      supabase
+        .from('listings')
+        .select(`
+          id,
+          title,
+          description,
+          profiles!inner(id, display_name, profile_picture_url, is_verified),
+          locations!inner(city, country),
+          media(storage_path, is_primary)
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(12),
+      supabase
+        .from('listings')
+        .select('location_id, locations!inner(city, country)')
+        .eq('is_active', true),
+    ]);
+
+    if (listingsResult.error) throw listingsResult.error;
+    if (cityCountsResult.error) throw cityCountsResult.error;
+
+    return {
+      props: {
+        initialDommes: mapListingsForHomepage(listingsResult.data || []),
+        initialPopularCities: mapPopularCities(cityCountsResult.data || []),
+        fetchError: null,
+      },
+    };
+  } catch (error) {
+    console.error('Error fetching homepage listings:', error);
+    return {
+      props: {
+        initialDommes: [],
+        initialPopularCities: [],
+        fetchError: 'Unable to load featured listings right now.',
+      },
+    };
+  }
+}
+
+export default function Home({ initialDommes, initialPopularCities, fetchError }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const dommes = initialDommes || [];
+  const popularCities = initialPopularCities || [];
 
   const handleSearch = (e) => {
     e.preventDefault();
     // Redirect to search page with query
     window.location.href = `/cities?q=${encodeURIComponent(searchQuery)}`;
   };
+
+  const featuredListing = dommes[0] || null;
 
   return (
     <Layout>
@@ -178,17 +150,9 @@ export default function Home() {
               </div>
 
               {/* Profile Grid */}
-              {loading ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {[...Array(8)].map((_, i) => (
-                    <div key={i} className="bg-[#1a1a1a] rounded-lg overflow-hidden animate-pulse">
-                      <div className="aspect-[3/4] bg-gray-800" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-gray-800 rounded w-3/4" />
-                        <div className="h-3 bg-gray-800 rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
+              {dommes.length === 0 ? (
+                <div className="bg-[#111] border border-gray-800 rounded-lg p-8 text-center text-gray-400">
+                  {fetchError || 'No active listings available yet.'}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -200,19 +164,18 @@ export default function Home() {
                     >
                       {/* Image */}
                       <div className="aspect-[3/4] relative">
-                        <img
-                          src={domme.profile_picture_url}
-                          alt={domme.display_name}
-                          className="w-full h-full object-cover"
-                        />
+                        {domme.profile_picture_url ? (
+                          <img
+                            src={domme.profile_picture_url}
+                            alt={domme.display_name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-800" />
+                        )}
                         {/* Gradient Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                        
-                        {/* Online Indicator - Only show after client mount to avoid hydration mismatch */}
-                        {mounted && domme.is_online && (
-                          <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1a1a1a]" />
-                        )}
-                        
+
                         {/* Verified Badge */}
                         {domme.is_verified && (
                           <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">
@@ -239,82 +202,93 @@ export default function Home() {
             {/* Right Sidebar */}
             <div className="w-full lg:w-80 space-y-6">
               
-              {/* Domme of the Day */}
+              {/* Featured Listing */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="h-px flex-1 bg-gray-800" />
                   <span className="text-red-600 font-bold text-sm uppercase tracking-wider">
-                    Domme of the Day
+                    Featured Listing
                   </span>
                 </div>
-                
-                <Link 
-                  href={`/listings/${dommeOfTheDay.id}`}
-                  className="block relative rounded-lg overflow-hidden group"
-                >
-                  <div className="aspect-[3/4]">
-                    <img
-                      src={dommeOfTheDay.profile_picture_url}
-                      alt={dommeOfTheDay.display_name}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+
+                {featuredListing ? (
+                  <Link
+                    href={`/listings/${featuredListing.id}`}
+                    className="block relative rounded-lg overflow-hidden group"
+                  >
+                    <div className="aspect-[3/4]">
+                      {featuredListing.profile_picture_url ? (
+                        <img
+                          src={featuredListing.profile_picture_url}
+                          alt={featuredListing.display_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-800" />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                    </div>
+                    <div className="absolute top-3 left-3">
+                      <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded uppercase">
+                        Featured
+                      </span>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      <h3 className="text-white font-bold text-lg">
+                        {featuredListing.display_name}
+                      </h3>
+                      <p className="text-gray-300 text-sm">
+                        {featuredListing.city}, {featuredListing.country}
+                      </p>
+                      {featuredListing.title && (
+                        <p className="text-gray-400 text-xs mt-1 italic truncate">
+                          {featuredListing.title}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="bg-[#111] border border-gray-800 rounded-lg p-6 text-center text-gray-400">
+                    No featured listing available yet.
                   </div>
-                  
-                  {/* Badge */}
-                  <div className="absolute top-3 left-3">
-                    <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded uppercase">
-                      Featured
-                    </span>
-                  </div>
-                  
-                  {/* Info */}
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <h3 className="text-white font-bold text-lg">
-                      {dommeOfTheDay.display_name} • {dommeOfTheDay.age} y/o
-                    </h3>
-                    <p className="text-gray-300 text-sm">
-                      {dommeOfTheDay.city}, {dommeOfTheDay.country}
-                    </p>
-                    <p className="text-gray-400 text-xs mt-1 italic">
-                      {dommeOfTheDay.tagline}
-                    </p>
-                  </div>
-                </Link>
+                )}
               </div>
 
               {/* Quick Links */}
               <div className="bg-[#111] rounded-lg p-4 border border-gray-800">
                 <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
                   <Video className="w-4 h-4 text-red-600" />
-                  Video of the Day
+                  Explore Videos
                 </h3>
-                <div className="aspect-video bg-gray-800 rounded flex items-center justify-center">
-                  <div className="w-12 h-12 rounded-full bg-red-600/20 flex items-center justify-center">
-                    <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-red-600 border-b-8 border-b-transparent ml-1" />
-                  </div>
-                </div>
+                <Link
+                  href="/videos"
+                  className="block text-center bg-[#1a1a1a] hover:bg-gray-800 text-white py-3 rounded border border-gray-700 transition-colors"
+                >
+                  Browse Videos
+                </Link>
               </div>
 
               {/* Categories */}
               <div className="bg-[#111] rounded-lg p-4 border border-gray-800">
                 <h3 className="text-white font-semibold mb-4">Browse by City</h3>
                 <div className="space-y-2">
-                  {popularCities.slice(0, 7).map((city) => (
-                    <Link
-                      key={city.name}
-                      href={`/cities?q=${city.name}`}
-                      className="flex items-center justify-between text-gray-400 hover:text-white py-2 px-3 rounded hover:bg-gray-800 transition-colors"
-                    >
-                      <span className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        {city.name}
-                      </span>
-                      <span className="text-xs text-gray-600">
-                        {city.count}
-                      </span>
-                    </Link>
-                  ))}
+                  {popularCities.length > 0 ? (
+                    popularCities.map((city) => (
+                      <Link
+                        key={`${city.name}-${city.country}`}
+                        href={`/cities?q=${encodeURIComponent(city.name)}`}
+                        className="flex items-center justify-between text-gray-400 hover:text-white py-2 px-3 rounded hover:bg-gray-800 transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4" />
+                          {city.name}
+                        </span>
+                        <span className="text-xs text-gray-600">{city.count}</span>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 px-2">No city stats available yet.</p>
+                  )}
                 </div>
                 <Link
                   href="/cities"

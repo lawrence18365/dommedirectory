@@ -9,6 +9,7 @@ import { MiniStat } from '../../components/ui/StatCard';
 import { Eye, MessageSquare, Check, Star, BarChart3, Edit3, DollarSign, Calendar, TrendingUp, Loader2, Plus, ExternalLink, Trash2 } from 'lucide-react';
 import { getCurrentUser } from '../../services/auth';
 import { getListingsByProfile, deleteListing } from '../../services/listings';
+import { getOnboardingStatus } from '../../services/profiles';
 import { supabase } from '../../utils/supabase';
 
 export default function Dashboard() {
@@ -37,6 +38,12 @@ export default function Dashboard() {
     
     if (error || !currentUser) {
       router.push('/auth/login');
+      return;
+    }
+
+    const onboarding = await getOnboardingStatus(currentUser.id);
+    if (!onboarding.isComplete) {
+      router.replace('/onboarding');
       return;
     }
 

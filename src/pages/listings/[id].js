@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
-import SEO from '../../components/ui/SEO';
+import SEO, { generateListingSchema, generateProfilePageSchema } from '../../components/ui/SEO';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import { useToast } from '../../context/ToastContext';
@@ -279,7 +279,12 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
 
   return (
     <Layout>
-      <SEO title={`${displayName} - ${locationStr} | DommeDirectory`} description={listing.description?.substring(0, 160) || `View ${displayName}'s profile on DommeDirectory`} />
+      <SEO
+        title={`${displayName} - ${locationStr} | DommeDirectory`}
+        description={listing.description?.substring(0, 160) || `View ${displayName}'s profile on DommeDirectory`}
+        canonical={`https://dommedirectory.com/listings/${listing.id}`}
+        jsonLd={[generateListingSchema(listing), generateProfilePageSchema(listing)]}
+      />
 
       {/* Lightbox */}
       <PhotoLightbox

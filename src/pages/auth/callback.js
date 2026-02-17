@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabase';
+import { getOnboardingStatus } from '../../services/profiles';
 import Layout from '../../components/layout/Layout';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 
@@ -45,14 +46,23 @@ export default function AuthCallback() {
           }
 
           if (data.session) {
+            const userId = data.session.user?.id;
+            let nextPath = '/dashboard';
+            if (userId) {
+              const onboarding = await getOnboardingStatus(userId);
+              if (!onboarding.isComplete) {
+                nextPath = '/onboarding';
+              }
+            }
+
             setStatus('success');
             setMessage(type === 'signup' 
               ? 'Email confirmed! Your account is now active.' 
               : 'Authentication successful!');
             
-            // Redirect to dashboard after a short delay
+            // Redirect after a short delay
             setTimeout(() => {
-              router.push('/dashboard');
+              router.push(nextPath);
             }, 2000);
           } else {
             throw new Error('No session established');
@@ -62,10 +72,12 @@ export default function AuthCallback() {
           const { data: { session } } = await supabase.auth.getSession();
           
           if (session) {
+            const onboarding = await getOnboardingStatus(session.user.id);
+            const nextPath = onboarding.isComplete ? '/dashboard' : '/onboarding';
             setStatus('success');
             setMessage('You are already logged in.');
             setTimeout(() => {
-              router.push('/dashboard');
+              router.push(nextPath);
             }, 1500);
           } else {
             throw new Error('No authentication tokens found');
@@ -98,7 +110,7 @@ export default function AuthCallback() {
               <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-white mb-2">Success!</h1>
               <p className="text-gray-400 mb-6">{message}</p>
-              <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
+              <p className="text-sm text-gray-500">Redirecting...</p>
             </>
           )}
 

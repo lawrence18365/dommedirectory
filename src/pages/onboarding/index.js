@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useUser } from '@supabase/auth-helpers-react';
-import { updateProfile, updateProfilePicture } from '../../services/profiles';
+import { useSessionContext, useUser } from '@supabase/auth-helpers-react';
+import { getOnboardingStatus, getProfile, updateProfile, updateProfilePicture } from '../../services/profiles';
 import { createListing, uploadListingMedia } from '../../services/listings';
 import { getAllLocations } from '../../services/locations';
 import { Camera, Check, ChevronRight, Loader2, MapPin, User, Briefcase, Sparkles } from 'lucide-react';
+import { sanitizeString, validateListingData } from '../../utils/validation';
 
 const STEPS = [
   { id: 'welcome', title: 'Welcome', icon: Sparkles },
@@ -15,12 +16,27 @@ const STEPS = [
   { id: 'complete', title: 'All Done!', icon: Check },
 ];
 
+const MIN_PROFILE_BIO_LENGTH = 80;
+const MIN_LISTING_TITLE_LENGTH = 10;
+const MIN_LISTING_DESCRIPTION_LENGTH = 120;
+
+const pushDataLayerEvent = (eventName, payload = {}) => {
+  if (typeof window === 'undefined' || !window.dataLayer) return;
+  window.dataLayer.push({
+    event: eventName,
+    ...payload,
+  });
+};
+
 export default function Onboarding() {
   const router = useRouter();
   const user = useUser();
+  const { isLoading: authLoading } = useSessionContext();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [locations, setLocations] = useState([]);
+  const [locationsError, setLocationsError] = useState(null);
   
   // Profile data
   const [profileData, setProfileData] = useState({
@@ -47,22 +63,69 @@ export default function Onboarding() {
   const [createdListingId, setCreatedListingId] = useState(null);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
-      router.push('/auth/login');
+      router.replace('/auth/login?redirect=/onboarding');
       return;
     }
-    // Pre-fill display name from email
-    setProfileData(prev => ({
-      ...prev,
-      display_name: user.user_metadata?.display_name || user.email?.split('@')[0] || '',
-      primary_location_id: user.user_metadata?.primary_location_id || '',
-    }));
-    fetchLocations();
-  }, [user, router]);
+
+    const initializeOnboarding = async () => {
+      setInitializing(true);
+      await fetchLocations();
+
+      const { profile } = await getProfile(user.id);
+      const onboarding = await getOnboardingStatus(user.id);
+
+      if (onboarding.isComplete) {
+        router.replace('/dashboard');
+        return;
+      }
+
+      const hasProfileBasics = onboarding.hasDisplayName && onboarding.hasPrimaryLocation && onboarding.hasBio;
+      const hasPartialProfile = onboarding.hasDisplayName || onboarding.hasPrimaryLocation || onboarding.hasBio;
+      if (hasProfileBasics && !onboarding.hasDetailedListing) {
+        setCurrentStep(2);
+      } else if (hasPartialProfile) {
+        setCurrentStep(1);
+      }
+
+      setProfileData((prev) => ({
+        ...prev,
+        display_name: profile?.display_name || user.user_metadata?.display_name || user.email?.split('@')[0] || '',
+        bio: profile?.bio || '',
+        primary_location_id: profile?.primary_location_id || user.user_metadata?.primary_location_id || '',
+        profile_picture_url: profile?.profile_picture_url || null,
+      }));
+
+      if (profile?.primary_location_id) {
+        setListingData((prev) => ({ ...prev, locationId: profile.primary_location_id }));
+      }
+
+      setInitializing(false);
+    };
+
+    initializeOnboarding();
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
+    const step = STEPS[currentStep];
+    if (!step) return;
+
+    pushDataLayerEvent('onboarding_step_view', {
+      onboarding_step_id: step.id,
+      onboarding_step_index: currentStep + 1,
+    });
+  }, [currentStep]);
 
   const fetchLocations = async () => {
-    const { locations: locs } = await getAllLocations();
-    if (locs) setLocations(locs);
+    setLocationsError(null);
+    const { locations: locs, error } = await getAllLocations();
+    if (error || !locs) {
+      setLocations([]);
+      setLocationsError('Unable to load locations right now. Please retry.');
+      return;
+    }
+    setLocations(locs);
   };
 
   const handleNext = () => {
@@ -102,32 +165,55 @@ export default function Onboarding() {
       alert('Please select your location');
       return;
     }
-
-    setLoading(true);
-    
-    // Upload profile image if selected
-    if (profileImage) {
-      const { url, error } = await updateProfilePicture(user.id, profileImage);
-      if (error) {
-        console.error('Profile image upload error:', error);
-      } else {
-        profileData.profile_picture_url = url;
-      }
-    }
-
-    // Save profile data
-    const { error } = await updateProfile(user.id, profileData);
-    if (error) {
-      alert('Failed to save profile: ' + error.message);
-      setLoading(false);
+    if (profileData.bio.trim().length < MIN_PROFILE_BIO_LENGTH) {
+      alert(`Please add at least ${MIN_PROFILE_BIO_LENGTH} characters to your bio so your profile has enough unique content.`);
       return;
     }
 
-    // Pre-fill listing location
-    setListingData(prev => ({ ...prev, locationId: profileData.primary_location_id }));
-    
-    setLoading(false);
-    handleNext();
+    setLoading(true);
+
+    try {
+      const sanitizedBio = sanitizeString(profileData.bio || '', 2000);
+      const payload = {
+        ...profileData,
+        display_name: sanitizeString(profileData.display_name, 100),
+        bio: sanitizedBio,
+      };
+
+      // Upload profile image if selected
+      if (profileImage) {
+        const { url, error } = await updateProfilePicture(user.id, profileImage);
+        if (error) {
+          console.error('Profile image upload error:', error);
+          alert('Profile photo upload failed. You can retry later from Profile settings.');
+        } else {
+          payload.profile_picture_url = url;
+        }
+      }
+
+      // Save profile data
+      const { error } = await updateProfile(user.id, payload);
+      if (error) {
+        alert('Failed to save profile: ' + error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Pre-fill listing location
+      setListingData(prev => ({ ...prev, locationId: payload.primary_location_id }));
+
+      pushDataLayerEvent('onboarding_profile_saved', {
+        has_profile_photo: Boolean(payload.profile_picture_url),
+        bio_length: payload.bio.length,
+      });
+      
+      setLoading(false);
+      handleNext();
+    } catch (err) {
+      console.error('Save profile error:', err);
+      alert('Failed to save profile. Please try again.');
+      setLoading(false);
+    }
   };
 
   // Listing Step
@@ -165,28 +251,37 @@ export default function Onboarding() {
   };
 
   const saveListing = async () => {
-    if (!listingData.title.trim()) {
-      alert('Please enter a listing title');
+    if (listingData.title.trim().length < MIN_LISTING_TITLE_LENGTH) {
+      alert(`Please use at least ${MIN_LISTING_TITLE_LENGTH} characters in your listing title.`);
       return;
     }
-    if (!listingData.description.trim()) {
-      alert('Please enter a description');
+
+    if (listingData.description.trim().length < MIN_LISTING_DESCRIPTION_LENGTH) {
+      alert(`Please write at least ${MIN_LISTING_DESCRIPTION_LENGTH} characters in your listing description for stronger SEO.`);
       return;
     }
-    if (!listingData.locationId) {
-      alert('Please select a location');
+
+    const selectedServices = Object.values(listingData.services || {}).filter(Boolean).length;
+    if (selectedServices === 0) {
+      alert('Please select at least one service to describe what you offer.');
+      return;
+    }
+
+    const validation = validateListingData(listingData);
+    if (!validation.isValid) {
+      alert(validation.errors.join('. '));
       return;
     }
 
     setLoading(true);
 
     // Create listing
-    const { listing, error } = await createListing(user.id, {
-      title: listingData.title,
-      description: listingData.description,
-      locationId: listingData.locationId,
-      services: listingData.services,
-      rates: listingData.rates,
+      const { listing, error } = await createListing(user.id, {
+        title: sanitizeString(listingData.title, 200),
+        description: sanitizeString(listingData.description, 5000),
+        locationId: listingData.locationId,
+        services: listingData.services,
+        rates: listingData.rates,
     });
 
     if (error || !listing) {
@@ -211,6 +306,12 @@ export default function Onboarding() {
     }
 
     setCreatedListingId(listing.id);
+    pushDataLayerEvent('onboarding_listing_created', {
+      listing_id: listing.id,
+      listing_images_count: listingImages.length,
+      listing_description_length: listingData.description.trim().length,
+      selected_services_count: Object.values(listingData.services || {}).filter(Boolean).length,
+    });
     setLoading(false);
     handleNext();
   };
@@ -224,6 +325,14 @@ export default function Onboarding() {
       router.push(`/listings/${createdListingId}`);
     }
   };
+
+  if (authLoading || initializing) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+      </div>
+    );
+  }
 
   if (!user) return null;
 
@@ -313,7 +422,7 @@ export default function Onboarding() {
           <div className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-white">Set Up Your Profile</h2>
-              <p className="text-gray-400">Tell clients about yourself</p>
+              <p className="text-gray-400">Add detailed, unique profile information clients can trust</p>
             </div>
 
             {/* Profile Photo */}
@@ -345,6 +454,19 @@ export default function Onboarding() {
               </div>
             </div>
             <p className="text-center text-gray-500 text-sm">Click to add profile photo</p>
+
+            {locationsError && (
+              <div className="bg-red-900/20 border border-red-500/50 rounded p-3 text-center">
+                <p className="text-red-200 text-sm mb-2">{locationsError}</p>
+                <button
+                  type="button"
+                  onClick={fetchLocations}
+                  className="text-sm text-red-400 hover:text-red-300 underline"
+                >
+                  Retry loading locations
+                </button>
+              </div>
+            )}
 
             {/* Form Fields */}
             <div className="space-y-4">
@@ -391,6 +513,9 @@ export default function Onboarding() {
                   rows={4}
                   className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 resize-none"
                 />
+                <p className={`mt-2 text-xs ${profileData.bio.trim().length >= MIN_PROFILE_BIO_LENGTH ? 'text-green-400' : 'text-gray-500'}`}>
+                  {profileData.bio.trim().length}/{MIN_PROFILE_BIO_LENGTH}+ characters recommended for ranking and trust
+                </p>
               </div>
             </div>
 
@@ -422,7 +547,7 @@ export default function Onboarding() {
           <div className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-white">Create Your First Listing</h2>
-              <p className="text-gray-400">Describe your services</p>
+              <p className="text-gray-400">Write a detailed listing clients and search engines can understand</p>
             </div>
 
             {/* Listing Photos */}
@@ -461,6 +586,19 @@ export default function Onboarding() {
 
             {/* Listing Details */}
             <div className="space-y-4">
+              {locationsError && (
+                <div className="bg-red-900/20 border border-red-500/50 rounded p-3 text-center">
+                  <p className="text-red-200 text-sm mb-2">{locationsError}</p>
+                  <button
+                    type="button"
+                    onClick={fetchLocations}
+                    className="text-sm text-red-400 hover:text-red-300 underline"
+                  >
+                    Retry loading locations
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-2">
                   Listing Title *
@@ -485,6 +623,9 @@ export default function Onboarding() {
                   rows={4}
                   className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 resize-none"
                 />
+                <p className={`mt-2 text-xs ${listingData.description.trim().length >= MIN_LISTING_DESCRIPTION_LENGTH ? 'text-green-400' : 'text-gray-500'}`}>
+                  {listingData.description.trim().length}/{MIN_LISTING_DESCRIPTION_LENGTH}+ characters minimum for onboarding completion
+                </p>
               </div>
 
               <div>
