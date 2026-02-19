@@ -231,12 +231,20 @@ const main = async () => {
     throw new Error(`Failed to load city listings: ${listingsError.message}`);
   }
 
-  const listings = cityListings || [];
-  if (listings.length === 0) {
-    throw new Error(
-      `Locked metro ${metro.displayName} (${metro.locationId}) has 0 listings. Update docs/ops/primary-metro.json to a metro with supply.`
-    );
+  // --- supply checks (global + locked metro) ---
+  const { count: globalActiveListingsCount, error: globalCountErr } = await supabase
+    .from('listings')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_active', true);
+
+  if (globalCountErr) {
+    throw new Error(`Failed to count global active listings: ${globalCountErr.message}`);
   }
+
+  const listings = cityListings || [];
+  const lockedMetroListingsCount = listings.length;
+  const blockedGlobal = (globalActiveListingsCount || 0) === 0;
+  const blockedLockedMetro = !blockedGlobal && lockedMetroListingsCount === 0;
 
   const activeListings = listings.filter((listing) => listing.is_active);
   const listingIds = [...new Set(listings.map((listing) => listing.id))];
@@ -248,15 +256,79 @@ const main = async () => {
     ),
   ];
 
-  const onboardedProvidersYesterday = new Set(
-    listings
-      .filter((listing) => {
-        const createdMs = new Date(listing.created_at).getTime();
-        return Number.isFinite(createdMs) && createdMs >= startMs && createdMs < endMs;
-      })
-      .map((listing) => listing.profile_id)
-      .filter(Boolean)
-  ).size;
+  const onboardedProvidersYesterday =
+    listings.length === 0
+      ? 0
+      : new Set(
+          listings
+            .filter((listing) => {
+              const createdMs = new Date(listing.created_at).getTime();
+              return Number.isFinite(createdMs) && createdMs >= startMs && createdMs < endMs;
+            })
+            .map((listing) => listing.profile_id)
+            .filter(Boolean)
+        ).size;
+
+  // If blocked, write the report artifact and exit non-zero.
+  if (blockedGlobal || blockedLockedMetro) {
+    const reason = blockedGlobal
+      ? 'GLOBAL PRE-SUPPLY: listings.is_active=true is 0 across production'
+      : `METRO LOCK EMPTY: locked metro ${metro.displayName} (${metro.locationId}) has 0 listings; update docs/ops/primary-metro.json`;
+
+    const reportLines = [
+      `# Daily Ops Report - ${reportDate}`,
+      '',
+      `- Generated at (UTC): ${runAt.toISOString()}`,
+      `- Primary metro (locked): ${metro.displayName}`,
+      `- Metro timezone: ${zone}`,
+      `- Metro location id: \`${metro.locationId}\``,
+      `- Activity window (${zone}): ${activityDate} 00:00 -> ${activityDate} 23:59:59`,
+      `- Activity window (UTC): ${startIso} to ${endIso}`,
+      '',
+      '## Status',
+      '- STATUS: **BLOCKED**',
+      `- Reason: ${reason}`,
+      `- Global active listings: ${globalActiveListingsCount || 0}`,
+      `- Locked metro listings: ${lockedMetroListingsCount}`,
+      '',
+      '## Growth',
+      `- Outreaches: ${outreachCount}`,
+      `- Follow-ups: ${followUpCount}`,
+      `- Onboarded providers (new listing creators in window): ${onboardedProvidersYesterday}`,
+      '',
+      '## Supply + Trust',
+      `- Providers with active listings (total): ${activeProfileIds.length}`,
+      '- Verified providers (active listings): 0',
+      '- Referral links created (new share code events): 0',
+      '- Reports filed: 0',
+      '- Reports triaged: 0',
+      '- Avg triage time: n/a',
+      '- Median triage time: n/a',
+      '- Triage <= 12h SLA: n/a',
+      '',
+      '## Demand',
+      '- Contact actions yesterday (email/phone/website/booking clicks): 0',
+      '- Contact actions last 7 days: 0',
+      '',
+      '## Targets (single-metro gate)',
+      `- Listings target: ${activeProfileIds.length}/30`,
+      '- Verified target: 0/10',
+      '- Contact actions (7d) target: 0/10',
+      '',
+      '## Notes',
+      '- This report is BLOCKED; KPIs are suppressed to prevent misleading zeros.',
+      '- Next action: create at least 1 active listing in production (is_active=true).',
+      '- If supply exists but locked metro is empty, update docs/ops/primary-metro.json to a metro with listings.',
+      '',
+    ];
+
+    const outputDir = path.resolve(rootDir, 'docs', 'ops', 'daily');
+    fs.mkdirSync(outputDir, { recursive: true });
+    const outputPath = path.resolve(outputDir, `${reportDate}.md`);
+    fs.writeFileSync(outputPath, reportLines.join('\n'), 'utf8');
+    console.log(`Wrote ${path.relative(rootDir, outputPath)}`);
+    process.exit(2);
+  }
 
   const verifiedProviders = await countWithChunkedIn({
     supabase,

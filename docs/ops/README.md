@@ -36,4 +36,6 @@ Notes:
 - `outreaches` and `follow_ups` are manual inputs until CRM integration exists.
 - Other metrics are read from production tables (`listings`, `profiles`, `lead_events`, `listing_reports`, `referral_link_events`).
 - Activity windows are computed in the locked metro timezone and converted to UTC for queries.
-- Report generation fails if the locked metro has zero listings, to avoid silent all-zero reports.
+- In blocked states, report generation still writes the markdown artifact and exits non-zero (`2`):
+- `GLOBAL PRE-SUPPLY`: no active listings in production.
+- `METRO LOCK EMPTY`: locked metro has no listings.
