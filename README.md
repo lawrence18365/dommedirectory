@@ -85,6 +85,7 @@ Optional:
 - `npm run format:check` - Prettier check
 - `npm run smoke:prod` - run production smoke pack (money path + trust path)
 - `npm run admin:bootstrap -- --email <email>` - promote an auth user to admin
+- `npm run ops:daily-report -- --report_date YYYY-MM-DD --activity_date YYYY-MM-DD --outreaches N --follow_ups N` - generate internal daily ops report markdown
 
 ## Testing
 
@@ -121,6 +122,7 @@ Notes:
   - `20260219120100_leads_and_verification_workflow.sql`
   - `20260219120200_referrals_and_featured_credits.sql`
   - `20260219120300_report_triage_and_notifications.sql`
+  - `20260219233000_referral_link_events.sql`
 
 ## Media Storage
 
@@ -279,4 +281,4 @@ Status: **PASS**
   - Reverted: `20260209`
   - Applied via repair: `20260209090000`, `20260209090100`, `20260217120000`, `20260217120100`, `20260217120200`
 - Verification:
-  - `supabase migration list --linked` now shows one-to-one local/remote parity for all eight migrations.
+  - `supabase migration list --linked` now shows one-to-one local/remote parity for all migrations.

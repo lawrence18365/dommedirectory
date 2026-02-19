@@ -64,6 +64,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
+    let shareCodeCreated = false;
+
     if (!profile.referral_share_code) {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = randomShareCode();
@@ -77,6 +79,7 @@ export default async function handler(req, res) {
 
         if (!updateError) {
           profile = { ...profile, referral_share_code: candidate };
+          shareCodeCreated = true;
           break;
         }
 
@@ -89,6 +92,16 @@ export default async function handler(req, res) {
       if (!profile.referral_share_code) {
         console.error('Referral share code update error:', profileError);
         return res.status(500).json({ error: 'Failed to generate referral link' });
+      }
+    }
+
+    if (shareCodeCreated) {
+      const { error: eventError } = await admin
+        .from('referral_link_events')
+        .insert([{ profile_id: user.id }]);
+
+      if (eventError) {
+        console.error('Referral link event insert error:', eventError);
       }
     }
 
