@@ -32,7 +32,7 @@ export default function Post({ post }) {
                 "image": post.featured_image_url,
                 "author": {
                   "@type": "Person",
-                  "name": "Author Name" // TODO: Replace with actual author name
+                  "name": post.author_name || "DommeDirectory Editorial Team"
                 },
                 "datePublished": post.published_at,
                 "description": post.excerpt,

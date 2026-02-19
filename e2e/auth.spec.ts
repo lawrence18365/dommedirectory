@@ -30,7 +30,7 @@ test.describe('Authentication Flows', () => {
     // Check form elements - register page uses h1 with specific text
     await expect(page.locator('h1').filter({ hasText: /Create Your Account/i })).toBeVisible();
     await expect(page.getByLabel(/display name/i)).toBeVisible();
-    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/email address/i)).toBeVisible();
     await expect(page.getByLabel(/password/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /sign up|create account/i })).toBeVisible();
   });

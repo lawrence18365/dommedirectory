@@ -1,9 +1,12 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { uploadProfilePicture } from './storage';
 
 const MIN_PROFILE_BIO_LENGTH = 80;
 const MIN_LISTING_TITLE_LENGTH = 10;
 const MIN_LISTING_DESCRIPTION_LENGTH = 120;
+
+const getSupabaseConfigError = () =>
+  new Error('Supabase is not configured');
 
 /**
  * Get profile by ID
@@ -11,6 +14,10 @@ const MIN_LISTING_DESCRIPTION_LENGTH = 120;
  */
 export const getProfile = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { profile: null, error: getSupabaseConfigError() };
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .select(`*, locations!primary_location_id(id, city, state, country)`)
@@ -37,6 +44,10 @@ export const getProfile = async (profileId) => {
  */
 export const updateProfile = async (profileId, profileData) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: getSupabaseConfigError() };
+    }
+
     const updatePayload = {
       id: profileId,
       updated_at: new Date().toISOString(),
@@ -90,6 +101,14 @@ export const updateProfile = async (profileId, profileData) => {
       updatePayload.marketing_opt_in_at = profileData.marketing_opt_in_at || null;
     }
 
+    if (Object.prototype.hasOwnProperty.call(profileData, 'response_time_hours')) {
+      updatePayload.response_time_hours = profileData.response_time_hours || null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'last_active_at')) {
+      updatePayload.last_active_at = profileData.last_active_at || null;
+    }
+
     const { error } = await supabase
       .from('profiles')
       .upsert(updatePayload, { onConflict: 'id' });
@@ -109,6 +128,10 @@ export const updateProfile = async (profileId, profileData) => {
  */
 export const updateProfilePicture = async (profileId, file) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { url: null, error: getSupabaseConfigError() };
+    }
+
     const { url, error } = await uploadProfilePicture(profileId, file);
     if (error) throw error;
 
@@ -138,6 +161,10 @@ export const updateProfilePicture = async (profileId, file) => {
  */
 export const markProfileAsVerified = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: getSupabaseConfigError() };
+    }
+
     const expiryDate = new Date();
     expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
@@ -145,6 +172,7 @@ export const markProfileAsVerified = async (profileId) => {
       .from('profiles')
       .update({
         is_verified: true,
+        verification_tier: 'basic',
         verification_expires_at: expiryDate.toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -159,19 +187,47 @@ export const markProfileAsVerified = async (profileId) => {
   }
 };
 
+export const touchProfileLastActive = async (profileId) => {
+  try {
+    if (!isSupabaseConfigured) {
+      return { error: getSupabaseConfigError() };
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        last_active_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profileId);
+
+    if (error) throw error;
+    return { error: null };
+  } catch (error) {
+    console.error('Error updating last active timestamp:', error.message);
+    return { error };
+  }
+};
+
 /**
  * Submit verification documents
  * @param {string} profileId 
  * @param {Array} documentUrls - Array of file URLs from storage
+ * @param {'basic' | 'pro'} tierRequested - Requested verification tier
  */
-export const submitVerification = async (profileId, documentUrls) => {
+export const submitVerification = async (profileId, documentUrls, tierRequested = 'basic') => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: getSupabaseConfigError() };
+    }
+
     const { error } = await supabase
       .from('verifications')
       .insert([
         {
           profile_id: profileId,
           document_urls: documentUrls,
+          tier_requested: ['basic', 'pro'].includes(tierRequested) ? tierRequested : 'basic',
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -192,6 +248,10 @@ export const submitVerification = async (profileId, documentUrls) => {
  */
 export const checkVerificationStatus = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { verification: null, status: 'not_submitted', error: getSupabaseConfigError() };
+    }
+
     const { data, error } = await supabase
       .from('verifications')
       .select('*')
@@ -236,6 +296,19 @@ export const uploadVerificationDocument = async (profileId, file) => {
  */
 export const getOnboardingStatus = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return {
+        isComplete: false,
+        hasDisplayName: false,
+        hasPrimaryLocation: false,
+        hasBio: false,
+        hasListing: false,
+        hasDetailedListing: false,
+        listingsCount: 0,
+        error: getSupabaseConfigError(),
+      };
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, display_name, primary_location_id, bio')

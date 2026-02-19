@@ -1,0 +1,3 @@
+-- Local seed data placeholder.
+-- Keep this file present because supabase/config.toml enables db seeding.
+-- Add INSERT statements here when you want deterministic local demo data.

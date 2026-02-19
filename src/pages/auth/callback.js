@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../../utils/supabase';
-import { getOnboardingStatus } from '../../services/profiles';
+import { supabase, isSupabaseConfigured } from '../../utils/supabase';
+import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
 import Layout from '../../components/layout/Layout';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 
@@ -15,6 +15,12 @@ export default function AuthCallback() {
 
     const handleAuthCallback = async () => {
       try {
+        if (!isSupabaseConfigured) {
+          setStatus('error');
+          setMessage('Authentication is unavailable until Supabase is configured.');
+          return;
+        }
+
         // Check for error parameters first
         const error = router.query.error;
         const errorDescription = router.query.error_description;
@@ -47,8 +53,19 @@ export default function AuthCallback() {
 
           if (data.session) {
             const userId = data.session.user?.id;
+            const accessToken = data.session.access_token;
+            if (accessToken) {
+              fetch('/api/referrals/attribute', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }).catch(() => {});
+            }
+
             let nextPath = '/dashboard';
             if (userId) {
+              touchProfileLastActive(userId);
               const onboarding = await getOnboardingStatus(userId);
               if (!onboarding.isComplete) {
                 nextPath = '/onboarding';
@@ -72,6 +89,16 @@ export default function AuthCallback() {
           const { data: { session } } = await supabase.auth.getSession();
           
           if (session) {
+            if (session.access_token) {
+              fetch('/api/referrals/attribute', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+              }).catch(() => {});
+            }
+
+            touchProfileLastActive(session.user.id);
             const onboarding = await getOnboardingStatus(session.user.id);
             const nextPath = onboarding.isComplete ? '/dashboard' : '/onboarding';
             setStatus('success');

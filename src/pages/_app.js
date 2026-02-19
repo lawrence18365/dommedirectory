@@ -2,9 +2,11 @@ import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { Cinzel, Inter } from 'next/font/google';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 import { ProfileProvider } from '../context/ProfileContext';
 import { ToastProvider } from '../context/ToastContext';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
+import { captureReferralAttributionFromUrl } from '../services/referrals';
 import '../styles/globals.css';
 import { supabase } from '../utils/supabase';
 
@@ -48,6 +50,10 @@ function MyApp({ Component, pageProps }) {
   const router = useRouter();
   const getLayout = Component.getLayout || ((page) => page);
   const noindex = shouldNoindex(router.pathname);
+
+  useEffect(() => {
+    captureReferralAttributionFromUrl();
+  }, [router.asPath]);
 
   return (
     <>

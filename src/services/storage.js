@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 
 // Backblaze B2 Configuration
 const B2_PUBLIC_URL = process.env.NEXT_PUBLIC_B2_PUBLIC_URL;
@@ -10,6 +10,10 @@ const USE_B2 = !!B2_PUBLIC_URL;
  */
 const getAuthToken = async () => {
   try {
+    if (!isSupabaseConfigured) {
+      return null;
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     return session?.access_token || null;
   } catch {
@@ -78,6 +82,10 @@ const uploadToB2 = async (file, type) => {
  */
 const uploadToSupabase = async (file, bucket, path) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { url: null, error: new Error('Supabase is not configured') };
+    }
+
     const timestamp = Date.now();
     const fileExt = file.name.split('.').pop();
     const fileName = `${timestamp}.${fileExt}`;
@@ -139,6 +147,10 @@ export const deleteImage = async (url, bucket = 'media') => {
 
   // Supabase delete
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     const filePath = getFilePathFromUrl(url, bucket);
     if (filePath) {
       const { error } = await supabase.storage.from(bucket).remove([filePath]);

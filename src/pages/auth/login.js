@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { signIn } from '../../services/auth';
-import { getOnboardingStatus } from '../../services/profiles';
+import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
 import Layout from '../../components/layout/Layout';
 import { isValidEmail, sanitizeString } from '../../utils/validation'; // Assuming Layout component exists
 
@@ -43,7 +43,18 @@ const LoginPage = () => {
     } else {
       try {
         const userId = data?.user?.id;
+        const accessToken = data?.session?.access_token;
+        if (accessToken) {
+          fetch('/api/referrals/attribute', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }).catch(() => {});
+        }
+
         if (userId) {
+          touchProfileLastActive(userId);
           const onboarding = await getOnboardingStatus(userId);
           if (!onboarding.isComplete) {
             router.push('/onboarding');

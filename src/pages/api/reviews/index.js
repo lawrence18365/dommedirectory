@@ -4,7 +4,7 @@ import { sanitizeString } from '../../../utils/validation';
 import { applyRateLimit } from '../../../utils/rateLimit';
 
 /**
- * GET /api/reviews?listingId=xxx
+ * GET /api/reviews?listingId={listingId}
  * POST /api/reviews
  */
 export default async function handler(req, res) {

@@ -65,6 +65,10 @@ export default function CitiesDirectory({ initialLocations, error }) {
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeState, setActiveState] = useState(null);
+  const [cityUpdatesEmail, setCityUpdatesEmail] = useState('');
+  const [providerWaitlistEmail, setProviderWaitlistEmail] = useState('');
+  const [signupMessage, setSignupMessage] = useState({ city: null, provider: null });
+  const [submitting, setSubmitting] = useState({ city: false, provider: false });
 
   // Initialize selectedCountry
   useEffect(() => {
@@ -122,6 +126,92 @@ export default function CitiesDirectory({ initialLocations, error }) {
   const handleSearch = (e) => {
     e.preventDefault();
     // Search is handled reactively by the filter
+  };
+
+  const getUtmContext = () => {
+    if (typeof window === 'undefined') {
+      return { utm_source: null, utm_medium: null, utm_campaign: null };
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return {
+      utm_source: params.get('utm_source'),
+      utm_medium: params.get('utm_medium'),
+      utm_campaign: params.get('utm_campaign'),
+    };
+  };
+
+  const subscribe = async ({ email, type, citySlug = null }) => {
+    const response = await fetch('/api/waitlist/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        subscriptionType: type,
+        citySlug,
+        sourcePage: '/cities',
+        ...getUtmContext(),
+      }),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error || 'Unable to subscribe');
+    }
+  };
+
+  const handleCitySignup = async (e) => {
+    e.preventDefault();
+    setSubmitting((prev) => ({ ...prev, city: true }));
+    setSignupMessage((prev) => ({ ...prev, city: null }));
+
+    try {
+      const citySlug = searchTerm.trim() ? slugify(searchTerm.trim()) : null;
+      await subscribe({
+        email: cityUpdatesEmail,
+        type: 'city_updates',
+        citySlug,
+      });
+      setCityUpdatesEmail('');
+      setSignupMessage((prev) => ({
+        ...prev,
+        city: { type: 'success', text: 'Subscribed. We will email city updates.' },
+      }));
+    } catch (signupError) {
+      setSignupMessage((prev) => ({
+        ...prev,
+        city: { type: 'error', text: signupError.message },
+      }));
+    } finally {
+      setSubmitting((prev) => ({ ...prev, city: false }));
+    }
+  };
+
+  const handleProviderSignup = async (e) => {
+    e.preventDefault();
+    setSubmitting((prev) => ({ ...prev, provider: true }));
+    setSignupMessage((prev) => ({ ...prev, provider: null }));
+
+    try {
+      await subscribe({
+        email: providerWaitlistEmail,
+        type: 'provider_waitlist',
+      });
+      setProviderWaitlistEmail('');
+      setSignupMessage((prev) => ({
+        ...prev,
+        provider: { type: 'success', text: 'You are on the founding provider waitlist.' },
+      }));
+    } catch (signupError) {
+      setSignupMessage((prev) => ({
+        ...prev,
+        provider: { type: 'error', text: signupError.message },
+      }));
+    } finally {
+      setSubmitting((prev) => ({ ...prev, provider: false }));
+    }
   };
 
   const allCities = getAllCities();
@@ -367,6 +457,66 @@ export default function CitiesDirectory({ initialLocations, error }) {
                     <span className="text-white font-bold">{totalActiveListings}</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Buyer Email Capture */}
+              <div className="bg-[#111] rounded-lg p-4 border border-gray-800">
+                <h3 className="text-white font-semibold mb-2">Get Updates in Your City</h3>
+                <p className="text-gray-400 text-sm mb-3">
+                  Receive new verified listing alerts and safety updates.
+                </p>
+                <form onSubmit={handleCitySignup} className="space-y-2">
+                  <input
+                    type="email"
+                    required
+                    value={cityUpdatesEmail}
+                    onChange={(e) => setCityUpdatesEmail(e.target.value)}
+                    placeholder="you@email.com"
+                    className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting.city}
+                    className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium rounded py-2 transition-colors"
+                  >
+                    {submitting.city ? 'Submitting...' : 'Subscribe'}
+                  </button>
+                </form>
+                {signupMessage.city && (
+                  <p className={`text-xs mt-2 ${signupMessage.city.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                    {signupMessage.city.text}
+                  </p>
+                )}
+              </div>
+
+              {/* Provider Waitlist Capture */}
+              <div className="bg-[#111] rounded-lg p-4 border border-gray-800">
+                <h3 className="text-white font-semibold mb-2">Founding Provider Waitlist</h3>
+                <p className="text-gray-400 text-sm mb-3">
+                  Get early verified placement and tracked lead analytics.
+                </p>
+                <form onSubmit={handleProviderSignup} className="space-y-2">
+                  <input
+                    type="email"
+                    required
+                    value={providerWaitlistEmail}
+                    onChange={(e) => setProviderWaitlistEmail(e.target.value)}
+                    placeholder="provider@email.com"
+                    className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting.provider}
+                    className="w-full bg-[#1a1a1a] hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-medium rounded py-2 transition-colors border border-gray-700"
+                  >
+                    {submitting.provider ? 'Joining...' : 'Join Waitlist'}
+                  </button>
+                </form>
+                {signupMessage.provider && (
+                  <p className={`text-xs mt-2 ${signupMessage.provider.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                    {signupMessage.provider.text}
+                  </p>
+                )}
               </div>
 
               {/* Create Listing CTA */}

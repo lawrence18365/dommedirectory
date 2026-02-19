@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 
 /**
  * Get reviews for a listing
@@ -9,6 +9,10 @@ export const getListingReviews = async (listingId, options = {}) => {
   const { limit = 10, offset = 0, sortBy = 'newest' } = options;
   
   try {
+    if (!isSupabaseConfigured) {
+      return { reviews: [], error: null };
+    }
+
     let query = supabase
       .from('reviews')
       .select(`
@@ -43,6 +47,10 @@ export const getListingReviews = async (listingId, options = {}) => {
  */
 export const getListingRating = async (listingId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { average: 0, count: 0, error: null };
+    }
+
     const { data, error } = await supabase
       .from('reviews')
       .select('rating')
@@ -71,6 +79,10 @@ export const getListingRating = async (listingId) => {
  */
 export const createReview = async (reviewData) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { review: null, error: new Error('Supabase is not configured') };
+    }
+
     const listingId = reviewData.listing_id || reviewData.listingId;
     const profileId = reviewData.profile_id || reviewData.profileId;
     const content = reviewData.content;
@@ -126,6 +138,10 @@ export const createReview = async (reviewData) => {
  */
 export const getUserReviews = async (userId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { reviews: [], error: null };
+    }
+
     const { data, error } = await supabase
       .from('reviews')
       .select(`
@@ -150,6 +166,10 @@ export const getUserReviews = async (userId) => {
  */
 export const getProviderReviews = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { reviews: [], error: null };
+    }
+
     const { data, error } = await supabase
       .from('reviews')
       .select(`
@@ -176,6 +196,10 @@ export const getProviderReviews = async (profileId) => {
  */
 export const deleteReview = async (reviewId, userId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     const { error } = await supabase
       .from('reviews')
       .delete()

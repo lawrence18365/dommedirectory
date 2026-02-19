@@ -5,6 +5,7 @@ import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import Layout from '../../../components/layout/Layout';
 import { getAllLocations } from '../../../services/locations';
 import { getListingById, updateListing, uploadListingMedia, deleteMedia } from '../../../services/listings';
+import { sanitizeString, validateListingData } from '../../../utils/validation';
 
 export default function EditListing() {
   const router = useRouter();
@@ -216,12 +217,13 @@ export default function EditListing() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!formData.title || !formData.description || !formData.locationId) {
-      setError('Please fill out all required fields.');
+
+    const validation = validateListingData(formData);
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
       return;
     }
-    
+
     setError(null);
     setSuccess(false);
     setSubmitting(true);
@@ -229,8 +231,8 @@ export default function EditListing() {
     try {
       // Update the listing
       const { error: updateError } = await updateListing(id, {
-        title: formData.title,
-        description: formData.description,
+        title: sanitizeString(formData.title, 200),
+        description: sanitizeString(formData.description, 5000),
         locationId: formData.locationId,
         services: formData.services,
         rates: formData.rates,

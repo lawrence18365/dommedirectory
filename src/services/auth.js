@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { createClient } from '@supabase/supabase-js';
 
 const getSupabaseServerConfig = () => {
@@ -83,10 +83,25 @@ export const getUserFromRequest = async (req) => {
  * @param {string} displayName
  * @param {string} locationId
  * @param {boolean} marketingOptIn
+ * @param {Object} referralAttribution
  */
-export const signUp = async (email, password, displayName, locationId, marketingOptIn = false) => {
+export const signUp = async (
+  email,
+  password,
+  displayName,
+  locationId,
+  marketingOptIn = false,
+  referralAttribution = {}
+) => {
   const normalizedMarketingOptIn = Boolean(marketingOptIn);
+  const normalizedReferral = referralAttribution && typeof referralAttribution === 'object'
+    ? referralAttribution
+    : {};
   try {
+    if (!isSupabaseConfigured) {
+      return { data: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -98,6 +113,11 @@ export const signUp = async (email, password, displayName, locationId, marketing
           primary_location_id: locationId,
           marketing_opt_in: normalizedMarketingOptIn,
           marketing_opt_in_at: normalizedMarketingOptIn ? new Date().toISOString() : null,
+          referral_event_code: normalizedReferral.referral_event_code || null,
+          referral_source_city: normalizedReferral.referral_source_city || null,
+          referral_utm_source: normalizedReferral.referral_utm_source || null,
+          referral_utm_medium: normalizedReferral.referral_utm_medium || null,
+          referral_utm_campaign: normalizedReferral.referral_utm_campaign || null,
         },
       },
     });
@@ -121,6 +141,10 @@ export const signUp = async (email, password, displayName, locationId, marketing
  */
 export const signIn = async (email, password) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { data: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -139,6 +163,10 @@ export const signIn = async (email, password) => {
  */
 export const signOut = async () => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: null };
+    }
+
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     return { error: null };
@@ -153,6 +181,10 @@ export const signOut = async () => {
  */
 export const getCurrentUser = async () => {
   try {
+    if (!isSupabaseConfigured) {
+      return { user: null, error: null };
+    }
+
     const { data, error } = await supabase.auth.getSession();
     
     if (error) throw error;

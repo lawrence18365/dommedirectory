@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
 import SEO, { generateWebsiteSchema } from '../../components/ui/SEO';
 import { Search, MapPin, TrendingUp, Star, ChevronRight } from 'lucide-react';
-import { supabase } from '../../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../../utils/supabase';
 import { slugify } from '../../utils/slugify';
 
 const getCityImage = (cityName) => {
@@ -26,6 +26,12 @@ export default function USAPage() {
 
   const fetchUSListings = async () => {
     try {
+      if (!isSupabaseConfigured) {
+        setUsCities([]);
+        setListings([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('listings')
         .select(`

@@ -11,100 +11,99 @@ const DOMME_TIERS = [
   {
     tier: 'basic',
     price: '0',
-    description: 'Start your journey',
+    period: '',
+    description: 'Launch a compliant profile',
     features: [
-      'Basic profile listing',
+      'Professional profile listing',
       'Up to 5 photos',
-      'Standard search placement',
+      'City and profile discoverability',
+      'Basic trust indicators',
+      'Lead actions tracking (7 days)',
       'Email support',
-      'Basic analytics',
-      'Community access',
     ],
     ctaText: 'Start Free',
   },
   {
     tier: 'pro',
-    price: '49',
-    description: 'Most popular for professionals',
+    price: 'Request Quote',
+    period: '',
+    description: 'Lead growth add-on (manual billing)',
     features: [
       'Everything in Basic',
-      'Unlimited photos',
-      'Priority search placement',
-      'Video introduction',
-      'Advanced analytics',
-      'Priority support',
-      'Verified badge',
+      'Featured city/category placement',
+      '30-day lead funnel analytics',
+      'Priority moderation support',
+      'Pro verification review',
       'Custom booking link',
+      'Founding provider showcase eligibility',
     ],
     popular: true,
-    ctaText: 'Get Pro',
+    ctaText: 'Apply for Pro',
   },
   {
     tier: 'elite',
-    price: '99',
-    description: 'Maximum exposure',
+    price: 'Custom',
+    period: '',
+    description: 'Metro-level expansion package',
     features: [
       'Everything in Pro',
-      'Homepage featured placement',
-      'Top search results',
-      'Instagram promotion',
-      'Personal account manager',
-      'Custom branding',
-      'Gold verified badge',
-      'Exclusive events access',
-      '0% commission on bookings',
+      'Multi-city featured placements',
+      'Dedicated onboarding support',
+      'Advanced provider referral tools',
+      'Quarterly trust & conversion review',
+      'Custom reporting exports',
     ],
-    ctaText: 'Go Elite',
+    ctaText: 'Contact Sales',
   },
 ];
 
 const CLIENT_FEATURES = [
   {
-    title: 'Advanced Search',
-    description: 'Filter by specialty, location, availability, price, and more',
+    title: 'Buyer-Intent Search',
+    description: 'Find legal professional services by city and service focus',
   },
   {
-    title: 'Verified Reviews',
-    description: 'Read authentic reviews from verified sessions',
+    title: 'Verification Tiers',
+    description: 'Understand whether a provider is Basic Verified or Pro Verified',
   },
   {
     title: 'Safety First',
-    description: 'All dommes are identity verified for your safety',
+    description: 'Clear reporting flows, moderation, and transparent trust blocks',
   },
   {
-    title: 'Secure Messaging',
-    description: 'Private, encrypted communication with dommes',
+    title: 'Trackable Outcomes',
+    description: 'Providers can measure profile views, CTA clicks, and contact actions',
   },
   {
-    title: 'Easy Booking',
-    description: 'Book sessions directly through the platform',
+    title: 'Professional Positioning',
+    description: 'Public pages stay professional and policy-compliant',
   },
   {
-    title: 'Exclusive Access',
-    description: 'Premium members get early access to new dommes',
+    title: 'Manual Quality Control',
+    description: 'Founding providers are onboarded with direct review and feedback',
   },
 ];
 
 const FAQS = [
   {
-    question: 'How does DommeDirectory make money?',
-    answer: 'We charge dommes a monthly subscription fee for premium features. We never take a commission from your session earnings. Clients use the platform for free.',
+    question: 'How does DommeDirectory make money right now?',
+    answer: 'Current revenue is manual: featured placement, verification services, and analytics add-ons. We only charge when lead flow is proven.',
   },
   {
     question: 'Is my privacy protected?',
-    answer: 'Absolutely. We use bank-level encryption, never share your data with third parties, and offer discreet billing. Your safety is our top priority.',
+    answer: 'Yes. We limit sensitive data exposure, use strict moderation workflows, and keep provider trust/safety controls visible on listings.',
   },
   {
     question: 'How does verification work?',
-    answer: 'We verify identity through government ID and video call. Gold verification includes background checks. Platinum requires a minimum rating and interview.',
+    answer: 'Basic Verified confirms identity and profile control. Pro Verified adds enhanced checks and manual review for trust-sensitive placement.',
   },
   {
-    question: 'Can I cancel anytime?',
-    answer: 'Yes, you can cancel your subscription at any time with no penalties. Your profile will revert to the free tier at the end of your billing period.',
+    question: 'How fast is onboarding?',
+    answer: 'Founding providers are onboarded manually with a short review queue. We optimize for quality and safety over volume.',
   },
   {
-    question: 'What payment methods do you accept?',
-    answer: 'We accept all major credit cards, PayPal, and cryptocurrency for maximum privacy.',
+    question: 'What payment methods are supported?',
+    answer: 'Phase 1 uses manual billing only while we finalize an adult-compatible payment workflow for automation.',
   },
 ];
 
@@ -139,14 +138,14 @@ export default function Pricing() {
   const [openFaq, setOpenFaq] = useState(0);
 
   const handleSubscribe = (tier) => {
-    showToast(`Redirecting to ${tier} checkout...`, 'info');
+    showToast(`Application started for ${tier}. Our team will follow up for manual onboarding.`, 'info');
   };
 
   return (
     <Layout>
       <SEO
-        title="Pricing - DommeDirectory Membership Plans"
-        description="Choose the perfect plan for your professional domination practice. Start free, upgrade for maximum exposure."
+        title="Pricing - DommeDirectory Provider Plans"
+        description="Start with a compliant listing and upgrade through manual, performance-driven provider plans."
       />
 
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -154,13 +153,13 @@ export default function Pricing() {
         <div className="text-center max-w-3xl mx-auto mb-16">
           <Badge variant="primary" className="mb-4">Simple Pricing</Badge>
           <h1 className="text-4xl sm:text-5xl font-black text-white mb-4">
-            Choose Your{' '}
+            Build Your{' '}
             <span className="bg-gradient-to-r from-red-400 to-red-600 bg-clip-text text-transparent">
-              Power Level
+              Lead Engine
             </span>
           </h1>
           <p className="text-gray-400 text-lg">
-            Start free and scale as you grow. No hidden fees, no commission on your earnings.
+            Start focused in one metro, prove lead flow, then scale with trust-first upgrades.
           </p>
         </div>
 
@@ -178,11 +177,11 @@ export default function Pricing() {
         {/* Trust Badges */}
         <div className="flex flex-wrap justify-center gap-8 mb-20">
           {[
-            { text: 'Bank-level Security' },
-            { text: 'Instant Verification' },
-            { text: 'Keep 100% Earnings' },
-            { text: '24/7 Support' },
-            { text: 'Instant Activation' },
+            { text: 'Legal-only policy enforcement' },
+            { text: 'Identity + control verification' },
+            { text: 'Trackable inquiry actions' },
+            { text: 'Human moderation queue' },
+            { text: 'Manual quality onboarding' },
           ].map((badge) => (
             <div key={badge.text} className="flex items-center gap-2 text-gray-400">
               <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,17 +231,17 @@ export default function Pricing() {
           
           <div className="relative">
             <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to Start Your Journey?
+              Ready to Become a Founding Provider?
             </h2>
             <p className="text-gray-400 mb-8 max-w-xl mx-auto">
-              Join 500+ professional dominatrices who trust DommeDirectory to grow their practice.
+              Get verified, complete your profile, and start receiving measurable city-intent inquiries.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button size="lg">Create Free Profile</Button>
-              <Button variant="outline" size="lg">Contact Sales</Button>
+              <Button variant="outline" size="lg">Apply for Featured Placement</Button>
             </div>
             <p className="text-gray-500 text-sm mt-4">
-              No credit card required for free tier
+              Manual billing only during the founding phase
             </p>
           </div>
         </div>

@@ -10,25 +10,25 @@ const verificationSteps = [
   {
     id: 1,
     title: 'Identity Verification',
-    description: 'Upload a government-issued ID to confirm your identity',
-    status: 'completed',
+    description: 'Upload a government-issued ID to confirm legal identity',
+    status: 'pending',
   },
   {
     id: 2,
-    title: 'Photo Verification',
-    description: 'Take a selfie holding your ID to prove it\'s you',
-    status: 'completed',
+    title: 'Proof of Control',
+    description: 'Show profile ownership via live selfie/video with your handle',
+    status: 'pending',
   },
   {
     id: 3,
-    title: 'Video Call',
-    description: 'Quick 5-minute video call with our team',
+    title: 'Trust & Safety Review',
+    description: 'Manual review for policy compliance and moderation history',
     status: 'pending',
   },
   {
     id: 4,
-    title: 'Background Check',
-    description: 'Optional: Complete background check for Gold status',
+    title: 'Pro Verification',
+    description: 'Optional enhanced checks for Pro Verified placement',
     status: 'optional',
   },
 ];
@@ -36,53 +36,41 @@ const verificationSteps = [
 const benefits = [
   {
     tier: 'basic',
-    name: 'Verified',
+    name: 'Basic Verified',
     price: 'Free',
     features: [
       'Identity verified badge',
+      'Proof of profile control',
       'Standard search placement',
       'Basic trust indicators',
       'Access to messaging',
     ],
   },
   {
-    tier: 'gold',
-    name: 'Gold Verified',
-    price: '$49 one-time',
+    tier: 'pro',
+    name: 'Pro Verified',
+    price: 'Manual quote',
     features: [
-      'Everything in Verified',
-      'Gold badge on profile',
+      'Everything in Basic Verified',
+      'Pro badge on profile',
       'Priority search placement',
-      'Background check included',
-      'Video interview badge',
-      'Trust banner on profile',
+      'Manual trust review',
+      'Moderation priority',
+      'Featured trust block on listing',
     ],
     popular: true,
-  },
-  {
-    tier: 'platinum',
-    name: 'Platinum',
-    price: 'Elite only',
-    features: [
-      'Everything in Gold',
-      'Platinum badge',
-      'Featured verification status',
-      'Annual re-verification',
-      'Exclusive trust seal',
-      'Priority support',
-    ],
   },
 ];
 
 export default function Verification() {
   const [activeStep, setActiveStep] = useState(3);
-  const [selectedTier, setSelectedTier] = useState('gold');
+  const [selectedTier, setSelectedTier] = useState('pro');
 
   return (
     <Layout>
       <SEO
-        title="Verification - Build Trust with Submissives"
-        description="Get verified on DommeDirectory to build trust and attract more clients. Multiple verification tiers available."
+        title="Verification - Trust and Safety"
+        description="Get verified on DommeDirectory with Basic and Pro tiers built for legal, professional service trust."
       />
 
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -96,7 +84,7 @@ export default function Verification() {
             </span>
           </h1>
           <p className="text-gray-400 text-lg">
-            Build trust with submissives. Verified dommes get 3x more bookings and command higher rates.
+            Verification is a trust product: identity checks, profile-control proof, and moderation-backed safety.
           </p>
         </div>
 
@@ -157,16 +145,16 @@ export default function Verification() {
             {/* Trust Stats */}
             <div className="grid sm:grid-cols-3 gap-4">
               <Card className="text-center p-6">
-                <div className="text-3xl font-black text-white mb-1">3x</div>
-                <p className="text-gray-500 text-sm">More Bookings</p>
+                <div className="text-3xl font-black text-white mb-1">2</div>
+                <p className="text-gray-500 text-sm">Verification Tiers</p>
               </Card>
               <Card className="text-center p-6">
-                <div className="text-3xl font-black text-white mb-1">40%</div>
-                <p className="text-gray-500 text-sm">Higher Rates</p>
+                <div className="text-3xl font-black text-white mb-1">1</div>
+                <p className="text-gray-500 text-sm">Moderation Queue</p>
               </Card>
               <Card className="text-center p-6">
-                <div className="text-3xl font-black text-white mb-1">92%</div>
-                <p className="text-gray-500 text-sm">Trust Score</p>
+                <div className="text-3xl font-black text-white mb-1">24h</div>
+                <p className="text-gray-500 text-sm">Target review SLA</p>
               </Card>
             </div>
           </div>
@@ -224,11 +212,11 @@ export default function Verification() {
               },
               {
                 q: 'How long does verification take?',
-                a: 'Basic verification is instant with AI. Gold verification takes 24-48 hours for manual review.',
+                a: 'Basic and Pro reviews are processed through a moderation queue. Typical turnaround is 24-48 hours.',
               },
               {
                 q: 'What if I fail verification?',
-                a: 'You can retry once for free. Our team will provide feedback on what needs to be corrected.',
+                a: 'You can resubmit with corrected documents. We include review notes so you know exactly what to fix.',
               },
             ].map((item, i) => (
               <Card key={i}>

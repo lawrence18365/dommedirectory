@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { slugify } from '../utils/slugify';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dommedirectory.com';
@@ -37,6 +37,20 @@ ${entries
 </urlset>`;
 
 export async function getServerSideProps({ res }) {
+  const staticEntries = STATIC_PAGES.map((page) => ({
+    ...page,
+    lastmod: toIso(new Date()),
+  }));
+
+  if (!isSupabaseConfigured) {
+    const xml = buildSitemap(staticEntries);
+    res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate');
+    res.write(xml);
+    res.end();
+    return { props: {} };
+  }
+
   try {
     const [postsResult, listingsResult, locationsResult] = await Promise.all([
       supabase
@@ -52,11 +66,6 @@ export async function getServerSideProps({ res }) {
         .select('city, is_active, updated_at, created_at')
         .eq('is_active', true),
     ]);
-
-    const staticEntries = STATIC_PAGES.map((page) => ({
-      ...page,
-      lastmod: toIso(new Date()),
-    }));
 
     const blogEntries = (postsResult.data || []).map((post) => ({
       url: `/blog/${post.slug}`,
