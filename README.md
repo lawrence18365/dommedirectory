@@ -177,26 +177,33 @@ Pipeline runs:
 
 Last run: 2026-02-19 (US)
 
-### 1) Production Supabase migrations (`20260219_007`, `20260219_008`)
+### 1) Production Supabase migrations (`006`, `007`, `008`)
 
-Status: **FAIL (blocked)**
+Status: **PASS**
 
-- Could not run `supabase link --project-ref mwfybwgkorbyncruzvtm` from this machine due account privilege error:
-  - `Your account does not have the necessary privileges to access this endpoint`
-- Direct runtime checks against production PostgREST confirm required tables are missing:
-  - `public.referrals`
-  - `public.featured_credits`
-  - `public.featured_credit_audit_logs`
-  - `public.listing_reports`
-  - `public.listing_report_audit_logs`
-  - `public.provider_notifications`
-- Additional dependency gap confirmed: migration `20260219_006_leads_and_verification_workflow.sql` is also not applied in production (missing `lead_events`, `email_subscriptions`, `verification_audit_logs`, and verification tier columns).
+- Linked project: `mwfybwgkorbyncruzvtm`
+- Applied (production): 
+  - `20260219120100_leads_and_verification_workflow.sql`
+  - `20260219120200_referrals_and_featured_credits.sql`
+  - `20260219120300_report_triage_and_notifications.sql`
+- Verification checks after apply:
+  - Required tables return `200` via PostgREST:
+    - `lead_events`, `email_subscriptions`
+    - `referrals`, `featured_credits`, `featured_credit_audit_logs`
+    - `listing_reports`, `listing_report_audit_logs`, `provider_notifications`
+  - Required columns selectable:
+    - `profiles`: `verification_tier`, `response_time_hours`, `last_active_at`
+    - `verifications`: `tier_requested`, `tier_granted`, `reviewed_by`, `reviewed_at`
+  - Trigger behavior validated:
+    - Referral capture + referred signup attributed correctly.
+    - Referrer received featured credits automatically.
+    - City ranking elevated referrer listing with `is_featured_effective=true`.
 
-Gate result: **not cleared**
+Gate result: **cleared**
 
 ### 2) Environment/secrets correctness (Netlify production)
 
-Status: **PASS (with one corrective set)**
+Status: **PASS**
 
 - Verified production env includes:
   - `SUPABASE_SERVICE_ROLE_KEY`
@@ -219,33 +226,24 @@ Deployment used for test run:
 - Preview URL: `https://69976f5c32b9ac5833958106--dommedirectory.netlify.app`
 - Production URL: `https://dommedirectory.com`
 
-Status: **FAIL**
+Status: **PASS**
 
 Results:
 
 - Lead funnel:
-  - `POST /api/leads/track` -> `500 {"error":"Failed to record event"}`
-  - `GET /api/leads/export?days=30` -> `500 {"error":"Failed to export lead events"}`
+  - `POST /api/leads/track` -> `201 {"success":true}`
+  - `GET /api/leads/export?days=30` (auth token) -> `200` with CSV header
 - Referral/flywheel:
-  - `GET /api/referrals/link` -> `500 {"error":"Failed to load profile"}`
-  - `POST /api/referrals/capture` -> `500 {"error":"Failed to validate referral code"}`
-  - `GET /api/location/listings` -> `500 {"error":"Failed to load location listings"}`
+  - `GET /api/referrals/link` (auth token) -> `200`
+  - `POST /api/referrals/capture` -> `201`
+  - `GET /api/location/listings` -> `200`
 - Report/triage:
-  - `POST /api/reports/listing` -> `500 {"error":"Failed to submit report"}`
+  - `POST /api/reports/listing` -> `201 {"success":true}`
   - `GET /api/admin/reports` (non-admin smoke user) -> `403 {"error":"Forbidden"}` (access control working)
 
-Interpretation:
+Gate result: **cleared**
 
-- Route deployment is now present (no longer 404), but DB schema is behind code expectations, so money-path APIs fail at runtime.
+### Follow-up (migration hygiene)
 
-Gate result: **not cleared**
-
-### Required action to clear gate
-
-Apply database migrations in production (in order):
-
-1. `20260219_006_leads_and_verification_workflow.sql`
-2. `20260219_007_referrals_and_featured_credits.sql`
-3. `20260219_008_report_triage_and_notifications.sql`
-
-After applying, rerun this checklist and all three smoke tracks.
+- Local repository migration filenames still use non-unique date-only prefixes (`20260209`, `20260217`, `20260219`), while production now has canonical timestamp versions for the three deploy-gate migrations.
+- Before the next database rollout, normalize migration versioning to timestamp-unique filenames to avoid CLI history collisions.
