@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { uploadListingMedia as uploadToStorage } from './storage';
 
 /**
@@ -8,6 +8,10 @@ import { uploadListingMedia as uploadToStorage } from './storage';
  */
 export const createListing = async (profileId, listingData) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { listing: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase
       .from('listings')
       .insert([
@@ -39,6 +43,10 @@ export const createListing = async (profileId, listingData) => {
  */
 export const getListingById = async (listingId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { listing: null, error: new Error('Supabase is not configured') };
+    }
+
     const { data, error } = await supabase
       .from('listings')
       .select(`
@@ -65,6 +73,10 @@ export const getListingById = async (listingId) => {
  */
 export const updateListing = async (listingId, listingData) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     const { error } = await supabase
       .from('listings')
       .update({
@@ -91,6 +103,10 @@ export const updateListing = async (listingId, listingData) => {
  */
 export const deleteListing = async (listingId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     const { error } = await supabase
       .from('listings')
       .delete()
@@ -110,6 +126,10 @@ export const deleteListing = async (listingId) => {
  */
 export const getListingsByProfile = async (profileId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { listings: [], error: null };
+    }
+
     const { data, error } = await supabase
       .from('listings')
       .select(`
@@ -139,6 +159,10 @@ export const uploadListingMedia = async (listingId, file, isPrimary = false) => 
 
 export const uploadMedia = async (listingId, file, isPrimary = false) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { media: null, error: new Error('Supabase is not configured') };
+    }
+
     // Upload to Cloudflare or Supabase
     const { url, error: uploadError } = await uploadToStorage(listingId, file);
     if (uploadError) throw uploadError;
@@ -179,6 +203,10 @@ export const uploadMedia = async (listingId, file, isPrimary = false) => {
  */
 export const deleteMedia = async (mediaId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     // Get media record
     const { data: mediaData, error: fetchError } = await supabase
       .from('media')
@@ -221,6 +249,10 @@ export const deleteMedia = async (mediaId) => {
  */
 export const setPrimaryMedia = async (listingId, mediaId) => {
   try {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase is not configured') };
+    }
+
     // Unset all primary for this listing
     const { error: unsetError } = await supabase
       .from('media')

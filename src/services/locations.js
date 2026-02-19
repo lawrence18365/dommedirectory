@@ -184,47 +184,47 @@ export const getListingsByLocation = async (locationId, options = {}) => {
       return { listings: null, error: new Error('Supabase is not configured') };
     }
 
-    let query = supabase
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams();
+      params.set('locationId', locationId);
+      if (options.featured) params.set('featured', 'true');
+      if (options.limit) params.set('limit', String(options.limit));
+      if (options.offset) params.set('offset', String(options.offset));
+
+      const response = await fetch(`/api/location/listings?${params.toString()}`);
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to load location listings');
+      }
+
+      return { listings: result.listings || [], error: null };
+    }
+
+    // SSR fallback path if this helper is ever called on the server.
+    const { data, error } = await supabase
       .from('listings')
       .select(`
         *,
-        profiles!inner(id, display_name),
+        profiles!inner(id, display_name, is_verified, verification_tier),
         media(id, storage_path, is_primary)
       `)
       .eq('location_id', locationId)
-      .eq('is_active', true);
-    
-    // Add featured filter if specified
-    if (options.featured) {
-      query = query.eq('is_featured', true);
-    }
-    
-    // Add pagination
-    if (options.limit) {
-      query = query.limit(options.limit);
-    }
-    
-    if (options.offset) {
-      query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
-    }
-    
-    // Add ordering
-    query = query.order('created_at', { ascending: false });
-    
-    const { data, error } = await query;
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
-    
-    // Process listings to get primary image
-    const processedListings = data.map(listing => {
-      const primaryImage = listing.media.find(m => m.is_primary) || listing.media[0] || null;
+
+    const processedListings = (data || []).map((listing) => {
+      const primaryImage = listing.media?.find((m) => m.is_primary) || listing.media?.[0] || null;
       return {
         ...listing,
         primaryImage: primaryImage ? primaryImage.storage_path : null,
-        media: undefined // Remove media array
+        is_featured_effective: Boolean(listing.is_featured),
+        remaining_featured_seconds: 0,
+        media: undefined,
       };
     });
-    
+
     return { listings: processedListings, error: null };
   } catch (error) {
     console.error('Error fetching listings by location:', error.message);

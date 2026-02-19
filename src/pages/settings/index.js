@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState({
     display_name: '',
     bio: '',
+    response_time_hours: '',
     contact_email: '',
     contact_phone: '',
     website: '',
@@ -31,6 +32,7 @@ export default function SettingsPage() {
       setFormData({
         display_name: profile.display_name || '',
         bio: profile.bio || '',
+        response_time_hours: profile.response_time_hours || '',
         contact_email: profile.contact_email || '',
         contact_phone: profile.contact_phone || '',
         website: profile.website || '',
@@ -71,6 +73,7 @@ export default function SettingsPage() {
     const { error } = await updateProfile(user.id, {
       display_name: formData.display_name,
       bio: formData.bio,
+      response_time_hours: formData.response_time_hours ? Number(formData.response_time_hours) : null,
       contact_email: formData.contact_email,
       contact_phone: formData.contact_phone,
       website: formData.website,
@@ -158,6 +161,26 @@ export default function SettingsPage() {
                   placeholder="Tell people about yourself..."
                   className="w-full bg-[#262626] text-white rounded py-2.5 px-4 border border-white/10 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors placeholder-gray-500 resize-none"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="response_time_hours" className="block text-sm font-medium text-gray-400 mb-1">
+                  Typical Response Time (hours)
+                </label>
+                <input
+                  type="number"
+                  id="response_time_hours"
+                  name="response_time_hours"
+                  min="1"
+                  max="168"
+                  value={formData.response_time_hours}
+                  onChange={handleChange}
+                  placeholder="e.g. 6"
+                  className="w-full bg-[#262626] text-white rounded py-2.5 px-4 border border-white/10 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors placeholder-gray-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Shown on listing pages to set buyer expectations.
+                </p>
               </div>
             </div>
           </div>

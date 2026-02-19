@@ -6,6 +6,7 @@ export default function SEO({
   canonical,
   ogImage = 'https://dommedirectory.com/og-image.jpg',
   noindex = false,
+  robotsContent = '',
   jsonLd = null
 }) {
   const siteTitle = 'DommeDirectory - Find Professional Dommes Near You';
@@ -22,6 +23,7 @@ export default function SEO({
       
       {/* Noindex */}
       {noindex && <meta name="robots" content="noindex,nofollow" />}
+      {!noindex && robotsContent && <meta name="robots" content={robotsContent} />}
       
       {/* Open Graph */}
       <meta property="og:title" content={fullTitle} />

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { signUp } from '../../services/auth';
 import { getAllLocations } from '../../services/locations';
+import { clearReferralAttribution, getReferralSignupMetadata } from '../../services/referrals';
 import Layout from '../../components/layout/Layout';
 import { isValidEmail, validatePassword, sanitizeString } from '../../utils/validation';
 import { MARKETING_CONSENT_TEXT } from '../../utils/constants';
@@ -69,12 +70,14 @@ const RegisterPage = () => {
     }
 
     setLoading(true);
+    const referralMetadata = getReferralSignupMetadata();
     const { data, error: signUpError } = await signUp(
       sanitizeString(email, 255),
       password,
       sanitizeString(displayName, 100),
       selectedLocation,
-      marketingOptIn
+      marketingOptIn,
+      referralMetadata
     );
 
     if (signUpError) {
@@ -83,10 +86,12 @@ const RegisterPage = () => {
       setLoading(false);
     } else if (data?.user && !data?.session) {
       // Email confirmation required
+      clearReferralAttribution();
       setSuccess(true);
       setLoading(false);
     } else {
       // Auto-confirmed (no email required) - redirect to onboarding
+      clearReferralAttribution();
       router.push('/onboarding');
     }
   };

@@ -12,6 +12,10 @@ export default function PricingCard({
   onCtaClick,
   disabled = false,
 }) {
+  const isNumericPrice =
+    typeof price === 'number' || (/^\d+(\.\d+)?$/).test(String(price));
+  const priceText = isNumericPrice ? `$${price}` : String(price);
+
   const tierStyles = {
     basic: 'border-gray-700',
     pro: 'border-red-600 shadow-lg shadow-red-600/20',
@@ -25,7 +29,7 @@ export default function PricingCard({
   };
 
   return (
-    <div className={`relative bg-[#1a1a1a] rounded-2xl border-2 p-6 ${tierStyles[tier]} ${popular ? 'scale-105 z-10' : ''}`}>
+    <div className={`relative bg-[#1a1a1a] rounded-2xl border-2 p-6 ${tierStyles[tier] || 'border-gray-700'} ${popular ? 'scale-105 z-10' : ''}`}>
       {tierBadges[tier]}
       
       {/* Header */}
@@ -36,8 +40,8 @@ export default function PricingCard({
       
       {/* Price */}
       <div className="text-center mb-6">
-        <span className="text-4xl font-black text-white">${price}</span>
-        <span className="text-gray-500">/{period}</span>
+        <span className="text-4xl font-black text-white">{priceText}</span>
+        {period && <span className="text-gray-500">/{period}</span>}
       </div>
       
       {/* Features */}

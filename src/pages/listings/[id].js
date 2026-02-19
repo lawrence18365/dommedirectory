@@ -6,8 +6,14 @@ import SEO, { generateListingSchema, generateProfilePageSchema } from '../../com
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import { useToast } from '../../context/ToastContext';
-import { supabase } from '../../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../../utils/supabase';
 import { getListingReviews, getListingRating, createReview } from '../../services/reviews';
+import {
+  LEAD_EVENT_TYPES,
+  getLeadIdentifiers,
+  getUtmContext,
+  trackLeadEvent,
+} from '../../services/leadEvents';
 import { ReviewCard, ReviewForm } from '../../components/ui/ReviewCard';
 import { MessageSquare, Loader2, Star } from 'lucide-react';
 
@@ -77,6 +83,16 @@ function PhotoLightbox({ photos, initialIndex, isOpen, onClose }) {
 export async function getServerSideProps(context) {
   const { id } = context.params;
 
+  if (!isSupabaseConfigured) {
+    return {
+      props: {
+        listing: null,
+        similarListings: [],
+        error: 'Listing data is unavailable until Supabase is configured.',
+      },
+    };
+  }
+
   try {
     // Fetch listing with all related data
     const { data: listing, error } = await supabase
@@ -86,7 +102,8 @@ export async function getServerSideProps(context) {
         profiles!inner(
           id, display_name, bio, is_verified, profile_picture_url,
           contact_email, contact_phone, website, social_links,
-          services_offered, created_at
+          services_offered, verification_tier, response_time_hours,
+          last_active_at, created_at
         ),
         locations!inner(id, city, state, country),
         media(id, storage_path, is_primary)
@@ -150,6 +167,9 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('Fake photos');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   
   // Reviews state
@@ -158,6 +178,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const [averageRating, setAverageRating] = useState(0);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const [mediaUnlocked, setMediaUnlocked] = useState(false);
 
   // Fetch reviews when tab is selected
   useEffect(() => {
@@ -167,6 +188,11 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   }, [activeTab, listing?.id]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setCurrentUserId(null);
+      return undefined;
+    }
+
     let isMounted = true;
 
     supabase.auth.getUser().then(({ data }) => {
@@ -178,6 +204,39 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!currentUserId) {
+      setMediaUnlocked(false);
+      return;
+    }
+
+    const ageConfirmed = window.localStorage.getItem('dd_age_gate_confirmed') === 'true';
+    setMediaUnlocked(ageConfirmed);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!listing?.id) return;
+
+    trackLeadEvent({
+      listingId: listing.id,
+      eventType: LEAD_EVENT_TYPES.LISTING_VIEW,
+      cityPage: listing.locations?.city || null,
+      metadata: {
+        source: 'listing_page',
+      },
+    });
+  }, [listing?.id, listing?.locations?.city]);
+
+  useEffect(() => {
+    if (!listing?.id) return;
+
+    getListingRating(listing.id).then(({ average, count }) => {
+      setAverageRating(average || 0);
+      setReviewCount(count || 0);
+    });
+  }, [listing?.id]);
 
   const fetchReviews = async () => {
     setLoadingReviews(true);
@@ -235,13 +294,22 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const location = listing.locations || {};
   const mediaItems = listing.media || [];
 
-  // Build photos array from media
-  const primaryMedia = mediaItems.find(m => m.is_primary);
-  const photos = mediaItems.length > 0
-    ? mediaItems
-      .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
-      .map((m, i) => ({ id: m.id, url: m.storage_path, type: i === 0 ? 'main' : 'gallery' }))
-    : [{ id: 'default', url: profile.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1500&fit=crop', type: 'main' }];
+  const hasRestrictedMedia = mediaItems.length > 0;
+  const canViewMedia = !hasRestrictedMedia || mediaUnlocked;
+
+  const photos = canViewMedia
+    ? (mediaItems.length > 0
+      ? mediaItems
+        .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+        .map((m, i) => ({ id: m.id, url: m.storage_path, type: i === 0 ? 'main' : 'gallery' }))
+      : [{ id: 'default', url: profile.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1500&fit=crop', type: 'main' }])
+    : [{
+      id: 'gated',
+      url:
+        profile.profile_picture_url ||
+        'https://images.unsplash.com/photo-1518600506278-4e8ef466b810?w=1200&h=1500&fit=crop',
+      type: 'main',
+    }];
 
   // Build display data
   const displayName = profile.display_name || listing.title || 'Unknown';
@@ -261,6 +329,61 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
 
   // Social links
   const socialLinks = profile.social_links || {};
+  const safeWebsiteUrl = (() => {
+    if (!profile.website) return null;
+
+    try {
+      const parsed = new URL(
+        profile.website.startsWith('http')
+          ? profile.website
+          : `https://${profile.website}`
+      );
+      if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  })();
+
+  const responseTimeLabel = profile.response_time_hours
+    ? `${profile.response_time_hours} hour${profile.response_time_hours === 1 ? '' : 's'}`
+    : 'Not provided';
+  const lastActiveLabel = profile.last_active_at
+    ? new Date(profile.last_active_at).toLocaleDateString()
+    : listing.updated_at
+      ? new Date(listing.updated_at).toLocaleDateString()
+      : 'Unknown';
+  const primaryContact = profile.contact_email
+    ? {
+        label: 'Send Booking Email',
+        href: `mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`,
+        eventType: LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK,
+      }
+    : profile.contact_phone
+      ? {
+          label: 'Call Now',
+          href: `tel:${profile.contact_phone}`,
+          eventType: LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK,
+        }
+      : safeWebsiteUrl
+        ? {
+            label: 'Visit Booking Website',
+            href: safeWebsiteUrl,
+            eventType: LEAD_EVENT_TYPES.CONTACT_BOOKING_CLICK,
+          }
+      : null;
+
+  const handleUnlockMedia = () => {
+    if (!currentUserId) {
+      router.push(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('dd_age_gate_confirmed', 'true');
+    }
+    setMediaUnlocked(true);
+  };
 
   const handleSave = () => {
     setSaved(!saved);
@@ -272,9 +395,59 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
     showToast('Link copied to clipboard', 'success');
   };
 
-  const handleReport = () => {
-    setShowReportModal(false);
-    showToast('Report submitted. Thank you for keeping our community safe.', 'success');
+  const trackContactAction = (eventType) => {
+    trackLeadEvent({
+      listingId: listing.id,
+      eventType,
+      cityPage: location.city || null,
+      metadata: {
+        source: 'sidebar_cta',
+      },
+    });
+  };
+
+  const handleReport = async () => {
+    if (!reportReason) {
+      showToast('Please choose a report reason.', 'error');
+      return;
+    }
+
+    setReportSubmitting(true);
+    try {
+      const { visitorId, sessionId } = getLeadIdentifiers();
+      const response = await fetch('/api/reports/listing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          listingId: listing.id,
+          reason: reportReason,
+          details: reportDetails,
+          sourcePage: `/listings/${listing.id}`,
+          visitorId,
+          sessionId,
+          cityPage: location.city || null,
+          pagePath: typeof window !== 'undefined' ? window.location.pathname : null,
+          referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+          ...getUtmContext(),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to submit report');
+      }
+
+      setShowReportModal(false);
+      setReportDetails('');
+      setReportReason('Fake photos');
+      showToast('Report submitted. Our moderation team will review it.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Unable to submit report right now.', 'error');
+    } finally {
+      setReportSubmitting(false);
+    }
   };
 
   return (
@@ -283,6 +456,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
         title={`${displayName} - ${locationStr} | DommeDirectory`}
         description={listing.description?.substring(0, 160) || `View ${displayName}'s profile on DommeDirectory`}
         canonical={`https://dommedirectory.com/listings/${listing.id}`}
+        robotsContent="index,follow,noimageindex,max-image-preview:none"
         jsonLd={[generateListingSchema(listing), generateProfilePageSchema(listing)]}
       />
 
@@ -303,15 +477,28 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
             <div className="space-y-2 mb-4">
               {['Fake photos', 'Inappropriate content', 'Scam or fraud', 'Safety concern', 'Other'].map(reason => (
                 <label key={reason} className="flex items-center gap-2 text-gray-300 cursor-pointer">
-                  <input type="radio" name="report" className="text-red-600" />
+                  <input
+                    type="radio"
+                    name="report"
+                    value={reason}
+                    checked={reportReason === reason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="text-red-600"
+                  />
                   {reason}
                 </label>
               ))}
             </div>
-            <textarea className="w-full bg-gray-700 text-white rounded p-3 mb-4 text-sm" rows={3} placeholder="Additional details (optional)" />
+            <textarea
+              className="w-full bg-gray-700 text-white rounded p-3 mb-4 text-sm"
+              rows={3}
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              placeholder="Additional details (optional)"
+            />
             <div className="flex gap-3">
               <Button variant="secondary" fullWidth onClick={() => setShowReportModal(false)}>Cancel</Button>
-              <Button fullWidth onClick={handleReport}>Submit Report</Button>
+              <Button fullWidth isLoading={reportSubmitting} onClick={handleReport}>Submit Report</Button>
             </div>
           </div>
         </div>
@@ -324,8 +511,11 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-1">
               {/* Main Image */}
               <div
-                className="relative aspect-[4/5] lg:aspect-auto lg:h-[600px] cursor-pointer group"
-                onClick={() => setLightboxOpen(true)}
+                className={`relative aspect-[4/5] lg:aspect-auto lg:h-[600px] group ${canViewMedia ? 'cursor-pointer' : 'cursor-default'}`}
+                onClick={() => {
+                  if (!canViewMedia) return;
+                  setLightboxOpen(true);
+                }}
               >
                 <img src={photos[activeImage]?.url} alt={displayName} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
@@ -336,6 +526,35 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                 <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <span className="bg-black/70 text-white text-xs px-3 py-1 rounded-full">Click to expand</span>
                 </div>
+                {!canViewMedia && (
+                  <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-6">
+                    <div className="max-w-sm text-center">
+                      <p className="text-sm font-semibold text-white">
+                        Media is protected behind age confirmation and login.
+                      </p>
+                      <p className="mt-2 text-xs text-gray-300">
+                        This keeps public pages professional while allowing verified adults to view provider media.
+                      </p>
+                      <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                        {!currentUserId && (
+                          <Link
+                            href={`/auth/login?redirect=${encodeURIComponent(router.asPath)}`}
+                            className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded bg-gray-100 text-gray-900 hover:bg-white"
+                          >
+                            Log In
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleUnlockMedia}
+                          className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded bg-red-600 text-white hover:bg-red-700"
+                        >
+                          I am 18+, show media
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Thumbnail Grid */}
@@ -413,6 +632,47 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                     ))}
                   </div>
                 )}
+
+                {primaryContact && (
+                  <div className="mt-5">
+                    <a
+                      href={primaryContact.href}
+                      onClick={() => trackContactAction(primaryContact.eventType)}
+                      target={primaryContact.href.startsWith('http') ? '_blank' : undefined}
+                      rel={primaryContact.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                    >
+                      <Button size="lg" fullWidth>
+                        {primaryContact.label}
+                      </Button>
+                    </a>
+                  </div>
+                )}
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Verification</p>
+                    <p className="mt-1 text-sm text-white">
+                      {profile.is_verified
+                        ? `${profile.verification_tier === 'pro' ? 'Pro Verified' : 'Basic Verified'}`
+                        : 'Unverified'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Typical Response Time</p>
+                    <p className="mt-1 text-sm text-white">{responseTimeLabel}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Trust Signals</p>
+                    <p className="mt-1 text-sm text-white">{reviewCount} reviews • Active {lastActiveLabel}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Safety</p>
+                  <p className="mt-1 text-sm text-gray-300">
+                    Verification badges confirm identity and profile control. Never send cash outside trusted channels.
+                  </p>
+                </div>
               </div>
 
               {/* Tabs */}
@@ -505,19 +765,39 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                       {profile.contact_email && (
                         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                           <h4 className="text-gray-400 text-sm mb-1">Email</h4>
-                          <a href={`mailto:${profile.contact_email}`} className="text-white hover:text-red-400 transition-colors">{profile.contact_email}</a>
+                          <a
+                            href={`mailto:${profile.contact_email}`}
+                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK)}
+                            className="text-white hover:text-red-400 transition-colors"
+                          >
+                            {profile.contact_email}
+                          </a>
                         </div>
                       )}
                       {profile.contact_phone && (
                         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                           <h4 className="text-gray-400 text-sm mb-1">Phone</h4>
-                          <a href={`tel:${profile.contact_phone}`} className="text-white hover:text-red-400 transition-colors">{profile.contact_phone}</a>
+                          <a
+                            href={`tel:${profile.contact_phone}`}
+                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK)}
+                            className="text-white hover:text-red-400 transition-colors"
+                          >
+                            {profile.contact_phone}
+                          </a>
                         </div>
                       )}
-                      {profile.website && (
+                      {safeWebsiteUrl && (
                         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                           <h4 className="text-gray-400 text-sm mb-1">Website</h4>
-                          <a href={(() => { try { const u = new URL(profile.website.startsWith('http') ? profile.website : `https://${profile.website}`); return ['http:', 'https:'].includes(u.protocol) ? u.href : '#'; } catch { return '#'; } })()} target="_blank" rel="noopener noreferrer" className="text-white hover:text-red-400 transition-colors">{profile.website}</a>
+                          <a
+                            href={safeWebsiteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
+                            className="text-white hover:text-red-400 transition-colors"
+                          >
+                            {profile.website}
+                          </a>
                         </div>
                       )}
                     </div>
@@ -649,7 +929,10 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                 <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
                   <h3 className="text-white font-semibold mb-4">Book a Session</h3>
                   {profile.contact_email && (
-                    <a href={`mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`}>
+                    <a
+                      href={`mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`}
+                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK)}
+                    >
                       <Button fullWidth size="lg" className="mb-3">
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                         Send Email
@@ -657,10 +940,26 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                     </a>
                   )}
                   {profile.contact_phone && (
-                    <a href={`tel:${profile.contact_phone}`}>
+                    <a
+                      href={`tel:${profile.contact_phone}`}
+                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK)}
+                    >
                       <Button variant="secondary" fullWidth size="lg" className="mb-4">
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                         Call
+                      </Button>
+                    </a>
+                  )}
+
+                  {safeWebsiteUrl && (
+                    <a
+                      href={safeWebsiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
+                    >
+                      <Button variant="ghost" fullWidth size="lg" className="mb-4">
+                        Open Booking Website
                       </Button>
                     </a>
                   )}
@@ -675,7 +974,19 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                     {profile.website && (
                       <div className="flex items-center gap-3 text-gray-300 text-sm">
                         <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
-                        {profile.website}
+                        {safeWebsiteUrl ? (
+                          <a
+                            href={safeWebsiteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
+                            className="hover:text-red-400 transition-colors"
+                          >
+                            {profile.website}
+                          </a>
+                        ) : (
+                          profile.website
+                        )}
                       </div>
                     )}
                     <div className="flex items-center gap-3 text-gray-300 text-sm">

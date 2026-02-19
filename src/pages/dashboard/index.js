@@ -2,15 +2,40 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import StatCard, { StatsGrid } from '../../components/ui/StatCard';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
+import Card, { CardHeader, CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
-import { MiniStat } from '../../components/ui/StatCard';
-import { Eye, MessageSquare, Check, Star, BarChart3, Edit3, DollarSign, Calendar, TrendingUp, Loader2, Plus, ExternalLink, Trash2 } from 'lucide-react';
+import { Eye, MessageSquare, Check, BarChart3, Edit3, Calendar, TrendingUp, Loader2, Plus, ExternalLink, Trash2, Share2, Copy } from 'lucide-react';
 import { getCurrentUser } from '../../services/auth';
 import { getListingsByProfile, deleteListing } from '../../services/listings';
-import { getOnboardingStatus } from '../../services/profiles';
+import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
 import { supabase } from '../../utils/supabase';
+
+const CLICK_EVENT_TYPES = new Set([
+  'contact_email_click',
+  'contact_phone_click',
+  'contact_website_click',
+  'contact_booking_click',
+]);
+
+const getSourceLabel = (event) => {
+  if (event.utm_source) {
+    return event.utm_medium
+      ? `${event.utm_source} / ${event.utm_medium}`
+      : event.utm_source;
+  }
+
+  if (event.referrer) {
+    try {
+      const hostname = new URL(event.referrer).hostname.replace(/^www\./, '');
+      return hostname || 'referrer';
+    } catch {
+      return 'referrer';
+    }
+  }
+
+  return 'direct';
+};
 
 export default function Dashboard() {
   const router = useRouter();
@@ -27,6 +52,26 @@ export default function Dashboard() {
   const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [listings, setListings] = useState([]);
   const [listingsLoading, setListingsLoading] = useState(true);
+  const [leadMetrics, setLeadMetrics] = useState({
+    last7: { views: 0, clicks: 0, contacts: 0 },
+    last30: { views: 0, clicks: 0, contacts: 0 },
+  });
+  const [referralData, setReferralData] = useState({
+    loading: true,
+    shareCode: '',
+    shareUrl: '',
+    totalAttributed: 0,
+    pendingCaptures: 0,
+    activeCreditSeconds: 0,
+    error: null,
+  });
+  const [referralCopied, setReferralCopied] = useState(false);
+  const [leadBreakdown, setLeadBreakdown] = useState({
+    byListing: [],
+    byCity: [],
+    bySource: [],
+  });
+  const [exportingDays, setExportingDays] = useState(null);
 
   useEffect(() => {
     checkAuth();
@@ -48,8 +93,12 @@ export default function Dashboard() {
     }
 
     setUser(currentUser);
-    await fetchProfile(currentUser.id);
-    await fetchDashboardData(currentUser.id);
+    touchProfileLastActive(currentUser.id);
+    await Promise.all([
+      fetchProfile(currentUser.id),
+      fetchDashboardData(currentUser.id),
+      fetchReferralData(),
+    ]);
     setLoading(false);
   };
 
@@ -87,8 +136,212 @@ export default function Dashboard() {
     }
     setListingsLoading(false);
 
+    await fetchLeadMetrics(userId, userListings || []);
+
     setRecentActivity([]);
     setUpcomingBookings([]);
+  };
+
+  const fetchLeadMetrics = async (userId, userListings = []) => {
+    const now = Date.now();
+    const last7BoundaryMs = now - 7 * 24 * 60 * 60 * 1000;
+    const last30BoundaryMs = now - 30 * 24 * 60 * 60 * 1000;
+    const last7Boundary = new Date(last7BoundaryMs).toISOString();
+    const last30Boundary = new Date(last30BoundaryMs).toISOString();
+
+    const { data, error } = await supabase
+      .from('lead_events')
+      .select(`
+        listing_id,
+        event_type,
+        city_page,
+        referrer,
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        created_at
+      `)
+      .eq('profile_id', userId)
+      .gte('created_at', last30Boundary);
+
+    if (error || !data) {
+      setLeadMetrics({
+        last7: { views: 0, clicks: 0, contacts: 0 },
+        last30: { views: 0, clicks: 0, contacts: 0 },
+      });
+      setLeadBreakdown({
+        byListing: [],
+        byCity: [],
+        bySource: [],
+      });
+      return;
+    }
+
+    const nextMetrics = {
+      last7: { views: 0, clicks: 0, contacts: 0 },
+      last30: { views: 0, clicks: 0, contacts: 0 },
+    };
+    const listingMap = new Map(userListings.map((listing) => [listing.id, listing.title || 'Untitled listing']));
+    const byListing = new Map();
+    const byCity = new Map();
+    const bySource = new Map();
+
+    data.forEach((event) => {
+      const createdAt = new Date(event.created_at).getTime();
+      const isLast7 = createdAt >= last7BoundaryMs;
+      const listingKey = event.listing_id || 'unknown';
+      const listingRow = byListing.get(listingKey) || {
+        listingId: listingKey,
+        listingTitle: listingMap.get(listingKey) || 'Unknown listing',
+        views: 0,
+        clicks: 0,
+        contacts: 0,
+      };
+      const cityKey = event.city_page || 'Unknown';
+      const cityRow = byCity.get(cityKey) || { city: cityKey, views: 0, clicks: 0, contacts: 0 };
+      const sourceKey = getSourceLabel(event);
+      const sourceRow = bySource.get(sourceKey) || { source: sourceKey, views: 0, clicks: 0, contacts: 0 };
+
+      if (event.event_type === 'listing_view') {
+        nextMetrics.last30.views += 1;
+        if (isLast7) nextMetrics.last7.views += 1;
+        listingRow.views += 1;
+        cityRow.views += 1;
+        sourceRow.views += 1;
+      }
+
+      if (CLICK_EVENT_TYPES.has(event.event_type)) {
+        nextMetrics.last30.clicks += 1;
+        nextMetrics.last30.contacts += 1;
+        if (isLast7) {
+          nextMetrics.last7.clicks += 1;
+          nextMetrics.last7.contacts += 1;
+        }
+        listingRow.clicks += 1;
+        listingRow.contacts += 1;
+        cityRow.clicks += 1;
+        cityRow.contacts += 1;
+        sourceRow.clicks += 1;
+        sourceRow.contacts += 1;
+      }
+
+      byListing.set(listingKey, listingRow);
+      byCity.set(cityKey, cityRow);
+      bySource.set(sourceKey, sourceRow);
+    });
+
+    setLeadMetrics(nextMetrics);
+    setLeadBreakdown({
+      byListing: [...byListing.values()].sort((a, b) => (b.contacts - a.contacts) || (b.views - a.views)),
+      byCity: [...byCity.values()].sort((a, b) => (b.contacts - a.contacts) || (b.views - a.views)),
+      bySource: [...bySource.values()].sort((a, b) => (b.contacts - a.contacts) || (b.views - a.views)),
+    });
+    setStats((prev) => ({
+      ...prev,
+      views: nextMetrics.last7.views,
+    }));
+  };
+
+  const fetchReferralData = async () => {
+    setReferralData((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+    }));
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) {
+        setReferralData((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Missing session token',
+        }));
+        return;
+      }
+
+      const response = await fetch('/api/referrals/link', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Unable to load referral data');
+      }
+
+      setReferralData({
+        loading: false,
+        shareCode: result.shareCode || '',
+        shareUrl: result.shareUrl || '',
+        totalAttributed: result.totalAttributed || 0,
+        pendingCaptures: result.pendingCaptures || 0,
+        activeCreditSeconds: result.activeCreditSeconds || 0,
+        error: null,
+      });
+    } catch (error) {
+      setReferralData((prev) => ({
+        ...prev,
+        loading: false,
+        error: error.message || 'Unable to load referral data',
+      }));
+    }
+  };
+
+  const copyReferralLink = async () => {
+    if (!referralData.shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(referralData.shareUrl);
+      setReferralCopied(true);
+      setTimeout(() => setReferralCopied(false), 2000);
+    } catch {
+      setReferralCopied(false);
+    }
+  };
+
+  const exportLeadCsv = async (days) => {
+    setExportingDays(days);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) {
+        setExportingDays(null);
+        return;
+      }
+
+      const response = await fetch(`/api/leads/export?days=${days}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        setExportingDays(null);
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `lead-events-${days}d.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // No-op: dashboard remains usable even if export fails.
+    } finally {
+      setExportingDays(null);
+    }
   };
 
   const handleDeleteListing = async (listingId) => {
@@ -117,6 +370,8 @@ export default function Dashboard() {
 
   const displayName = profile?.display_name || user.email?.split('@')[0] || 'User';
   const profileCompletion = calculateProfileCompletion(profile);
+  const featuredCreditHours = Math.floor((referralData.activeCreditSeconds || 0) / 3600);
+  const featuredCreditDays = Math.floor(featuredCreditHours / 24);
 
   return (
     <DashboardLayout user={user} profile={profile}>
@@ -168,6 +423,159 @@ export default function Dashboard() {
             icon={<Check className="w-6 h-6 text-red-600" />}
           />
         </StatsGrid>
+
+        <Card>
+          <CardHeader
+            title="Lead Funnel"
+            description="Trackable listing demand from city and profile traffic"
+          />
+          <CardContent>
+            <div className="grid sm:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Last 7 Days</p>
+                <p className="mt-2 text-2xl font-bold text-white">{leadMetrics.last7.views}</p>
+                <p className="text-sm text-gray-400">Listing Views</p>
+              </div>
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Last 7 Days</p>
+                <p className="mt-2 text-2xl font-bold text-white">{leadMetrics.last7.clicks}</p>
+                <p className="text-sm text-gray-400">CTA Clicks</p>
+              </div>
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Last 7 Days</p>
+                <p className="mt-2 text-2xl font-bold text-white">{leadMetrics.last7.contacts}</p>
+                <p className="text-sm text-gray-400">Contact Actions</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-6 text-sm text-gray-400">
+              <span>30-day views: {leadMetrics.last30.views}</span>
+              <span>30-day clicks: {leadMetrics.last30.clicks}</span>
+              <span>30-day contacts: {leadMetrics.last30.contacts}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Provider Referrals"
+            description="Share your link. Earn featured placement time when a provider signs up."
+          />
+          <CardContent>
+            {referralData.error && (
+              <div className="mb-4 rounded border border-red-700/40 bg-red-900/20 p-3 text-sm text-red-200">
+                {referralData.error}
+              </div>
+            )}
+
+            <div className="flex flex-col lg:flex-row gap-3">
+              <div className="flex-1 rounded border border-gray-800 bg-[#1a1a1a] px-3 py-2 text-sm text-gray-300 break-all">
+                {referralData.loading ? 'Loading referral link...' : (referralData.shareUrl || 'Referral link unavailable')}
+              </div>
+              <Button
+                onClick={copyReferralLink}
+                disabled={referralData.loading || !referralData.shareUrl}
+                leftIcon={referralCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              >
+                {referralCopied ? 'Copied' : 'Copy Link'}
+              </Button>
+            </div>
+
+            <div className="mt-4 grid sm:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Attributed Signups</p>
+                <p className="mt-2 text-2xl font-bold text-white">{referralData.totalAttributed}</p>
+              </div>
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Pending Captures</p>
+                <p className="mt-2 text-2xl font-bold text-white">{referralData.pendingCaptures}</p>
+              </div>
+              <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Featured Credit</p>
+                <p className="mt-2 text-2xl font-bold text-white">
+                  {featuredCreditDays > 0 ? `${featuredCreditDays}d` : `${featuredCreditHours}h`}
+                </p>
+              </div>
+            </div>
+
+            {referralData.shareCode && (
+              <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+                <Share2 className="w-3 h-3" />
+                Referral code: {referralData.shareCode}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Lead Drilldowns"
+            description="Break down contact actions by listing, city, and source."
+          />
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => exportLeadCsv(30)}
+                disabled={exportingDays !== null}
+              >
+                {exportingDays === 30 ? 'Exporting 30d...' : 'Export 30d CSV'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => exportLeadCsv(90)}
+                disabled={exportingDays !== null}
+              >
+                {exportingDays === 90 ? 'Exporting 90d...' : 'Export 90d CSV'}
+              </Button>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-gray-800 overflow-hidden">
+                <div className="bg-[#111] px-3 py-2 text-xs uppercase tracking-wide text-gray-500">
+                  By Listing
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {(leadBreakdown.byListing.length === 0 ? [{ listingTitle: 'No data yet', views: 0, contacts: 0 }] : leadBreakdown.byListing).map((row, index) => (
+                    <div key={`${row.listingId || row.listingTitle}-${index}`} className="px-3 py-2 border-t border-gray-800 text-sm">
+                      <p className="text-white truncate">{row.listingTitle}</p>
+                      <p className="text-gray-400 text-xs">{row.views} views • {row.contacts} contacts</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-800 overflow-hidden">
+                <div className="bg-[#111] px-3 py-2 text-xs uppercase tracking-wide text-gray-500">
+                  By City Source
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {(leadBreakdown.byCity.length === 0 ? [{ city: 'No data yet', views: 0, contacts: 0 }] : leadBreakdown.byCity).map((row, index) => (
+                    <div key={`${row.city}-${index}`} className="px-3 py-2 border-t border-gray-800 text-sm">
+                      <p className="text-white truncate">{row.city}</p>
+                      <p className="text-gray-400 text-xs">{row.views} views • {row.contacts} contacts</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-800 overflow-hidden">
+                <div className="bg-[#111] px-3 py-2 text-xs uppercase tracking-wide text-gray-500">
+                  By Referrer / UTM
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {(leadBreakdown.bySource.length === 0 ? [{ source: 'No data yet', views: 0, contacts: 0 }] : leadBreakdown.bySource).map((row, index) => (
+                    <div key={`${row.source}-${index}`} className="px-3 py-2 border-t border-gray-800 text-sm">
+                      <p className="text-white truncate">{row.source}</p>
+                      <p className="text-gray-400 text-xs">{row.views} views • {row.contacts} contacts</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Getting Started / Empty State */}

@@ -168,7 +168,7 @@ export default function CityLocation() {
                     </div>
                   )}
                   
-                  {listing.is_featured && (
+                  {(listing.is_featured_effective || listing.is_featured) && (
                     <div className="absolute top-2 right-2 bg-purple-600 text-white text-xs px-2 py-1 rounded">
                       Featured
                     </div>

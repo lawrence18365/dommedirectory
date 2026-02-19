@@ -11,6 +11,29 @@ const URL_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
 // Phone validation (basic international format)
 const PHONE_REGEX = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
 
+const DISALLOWED_LISTING_PATTERNS = [
+  /\bfull[\s-]?service\b/i,
+  /\bprostitut(?:e|ion)\b/i,
+  /\bes[c]?ort(?:ing)?\b/i,
+  /\bhappy ending\b/i,
+  /\bbareback\b/i,
+  /\bcreampie\b/i,
+  /\bcim\b/i,
+  /\b(?:gfe|pse)\b/i,
+  /\b(?:blowjob|handjob)\b/i,
+  /\b(?:anal|vaginal)\s+sex\b/i,
+  /\b(?:underage|minor)\b/i,
+  /\b(?:cocaine|meth|fentanyl)\b/i,
+];
+
+export function containsPolicyViolations(input) {
+  if (!input || typeof input !== 'string') {
+    return false;
+  }
+
+  return DISALLOWED_LISTING_PATTERNS.some((pattern) => pattern.test(input));
+}
+
 // Sanitize string input (remove script tags and dangerous content)
 export function sanitizeString(input, maxLength = 5000) {
   if (!input || typeof input !== 'string') return '';
@@ -143,6 +166,11 @@ export function validateListingData(data) {
     const desc = data.description.trim();
     if (desc.length < 20) errors.push('Description must be at least 20 characters');
     if (desc.length > 5000) errors.push('Description must be less than 5000 characters');
+  }
+
+  const policyText = `${data.title || ''}\n${data.description || ''}`;
+  if (containsPolicyViolations(policyText)) {
+    errors.push('Listing text violates legal/safety policy. Remove explicit sexual or illegal service language');
   }
   
   // Location validation

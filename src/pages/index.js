@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Layout from '../components/layout/Layout';
 import SEO, { generateWebsiteSchema, generateOrganizationSchema } from '../components/ui/SEO';
 import { Search, MapPin, Video, Star, Heart } from 'lucide-react';
-import { supabase } from '../utils/supabase';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 
 function mapListingsForHomepage(listings = []) {
   return listings.map((listing) => {
@@ -40,6 +40,16 @@ function mapPopularCities(cityRows = []) {
 }
 
 export async function getServerSideProps() {
+  if (!isSupabaseConfigured) {
+    return {
+      props: {
+        initialDommes: [],
+        initialPopularCities: [],
+        fetchError: 'Listings are unavailable until Supabase is configured.',
+      },
+    };
+  }
+
   try {
     const [listingsResult, cityCountsResult] = await Promise.all([
       supabase
