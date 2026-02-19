@@ -62,6 +62,7 @@ Required for media upload APIs:
 Required for admin scripts:
 
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_URL` (optional; scripts fall back to `NEXT_PUBLIC_SUPABASE_URL`)
 
 Optional:
 
@@ -74,6 +75,7 @@ Optional:
 - `npm run dev` - start local dev server
 - `npm run build` - production build
 - `npm run start` - run production server
+- `npm run check:migrations` - enforce 14-digit migration naming and unique version prefixes
 - `npm run lint` - ESLint
 - `npm run lint:fix` - ESLint auto-fix
 - `npm run typecheck` - TypeScript checks
@@ -81,6 +83,8 @@ Optional:
 - `npm run gate` - lint + typecheck + build + e2e
 - `npm run format` - Prettier write
 - `npm run format:check` - Prettier check
+- `npm run smoke:prod` - run production smoke pack (money path + trust path)
+- `npm run admin:bootstrap -- --email <email>` - promote an auth user to admin
 
 ## Testing
 
@@ -107,6 +111,16 @@ Notes:
 
 - `supabase/config.toml` has seeding enabled.
 - `supabase/seed.sql` exists as a placeholder and can be expanded with deterministic local data.
+- Migration naming policy is now strict: every file must use `YYYYMMDDHHMMSS_description.sql`.
+- Current canonical migration set:
+  - `20260209090000_initial_schema.sql`
+  - `20260209090100_storage_bucket.sql`
+  - `20260217120000_reviews_and_policy_hardening.sql`
+  - `20260217120100_marketing_opt_in.sql`
+  - `20260217120200_tighten_storage_rls.sql`
+  - `20260219120100_leads_and_verification_workflow.sql`
+  - `20260219120200_referrals_and_featured_credits.sql`
+  - `20260219120300_report_triage_and_notifications.sql`
 
 ## Media Storage
 
@@ -160,12 +174,13 @@ GitHub Actions workflow:
 
 Pipeline runs:
 
-1. `npm ci`
-2. Playwright browser install
-3. `lint`
-4. `typecheck`
-5. `build`
-6. `e2e`
+1. `check:migrations`
+2. `npm ci`
+3. Playwright browser install
+4. `lint`
+5. `typecheck`
+6. `build`
+7. `e2e`
 
 ## Troubleshooting
 
@@ -243,7 +258,25 @@ Results:
 
 Gate result: **cleared**
 
-### Follow-up (migration hygiene)
+### 4) Admin bootstrap smoke
 
-- Local repository migration filenames still use non-unique date-only prefixes (`20260209`, `20260217`, `20260219`), while production now has canonical timestamp versions for the three deploy-gate migrations.
-- Before the next database rollout, normalize migration versioning to timestamp-unique filenames to avoid CLI history collisions.
+Status: **PASS**
+
+- Bootstrap command (repeatable):
+  - `npm run admin:bootstrap -- --email <existing-user-email>`
+- Validation performed (production):
+  - Temporary non-admin auth user promoted to admin with bootstrap script.
+  - `GET /api/admin/reports` with that admin token -> `200`.
+  - Temporary user deleted after test.
+
+Gate result: **cleared**
+
+### Migration history normalization (completed)
+
+Status: **PASS**
+
+- Remote history repaired to align with canonical local versions:
+  - Reverted: `20260209`
+  - Applied via repair: `20260209090000`, `20260209090100`, `20260217120000`, `20260217120100`, `20260217120200`
+- Verification:
+  - `supabase migration list --linked` now shows one-to-one local/remote parity for all eight migrations.
