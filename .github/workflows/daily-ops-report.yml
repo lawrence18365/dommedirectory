@@ -19,12 +19,17 @@ on:
         description: 'Manual follow-up count for the activity date.'
         required: false
 
+concurrency:
+  group: daily-ops-report
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   daily-report:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 20
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
