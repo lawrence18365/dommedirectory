@@ -42,9 +42,10 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: scripts/outreach/requirements.txt
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 supabase
+        run: pip install -r scripts/outreach/requirements.txt
 
       - name: Classify uncontacted providers
         run: python scripts/outreach/build_delivery_queues_db.py
