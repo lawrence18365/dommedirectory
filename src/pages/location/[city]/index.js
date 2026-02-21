@@ -59,12 +59,47 @@ export default function CityLocation({ location, listings, error }) {
     ? `Browse ${listingCount} professional domme${listingCount === 1 ? '' : 's'} in ${locationStr}. Find verified BDSM, domination, and fetish services near you.`
     : `Discover professional dommes in ${locationStr} on DommeDirectory. Browse verified profiles and services.`;
 
+  const citySlug = router.query.city;
+  const pageUrl = `https://dommedirectory.com/location/${citySlug}`;
+
+  // JSON-LD: ItemList for rich directory results
+  const itemListSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `Professional Dommes in ${locationStr}`,
+    description: metaDescription,
+    url: pageUrl,
+    numberOfItems: listingCount,
+    itemListElement: listings.slice(0, 10).map((listing, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: listing.title,
+      url: `https://dommedirectory.com${buildProfilePath(listing)}`,
+      ...(listing.primaryImage ? { image: listing.primaryImage } : {}),
+    })),
+  };
+
+  // JSON-LD: BreadcrumbList for navigation trail
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://dommedirectory.com' },
+      { '@type': 'ListItem', position: 2, name: 'Cities', item: 'https://dommedirectory.com/cities' },
+      { '@type': 'ListItem', position: 3, name: location.city, item: pageUrl },
+    ],
+  };
+
+  const combinedJsonLd = [itemListSchema, breadcrumbSchema];
+
   return (
     <Layout>
       <SEO
-        title={`Dommes in ${locationStr}`}
+        title={`${listingCount} Dommes in ${locationStr} — Verified Profiles (${new Date().getFullYear()})`}
         description={metaDescription}
-        canonical={`https://dommedirectory.com/location/${router.query.city}`}
+        canonical={pageUrl}
+        jsonLd={combinedJsonLd}
+        geo={{ city: location.city, state: location.state, country: location.country }}
       />
 
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">

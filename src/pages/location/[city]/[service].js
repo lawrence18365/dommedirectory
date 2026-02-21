@@ -108,12 +108,27 @@ export default function LocationServicePage({ location, serviceName, serviceSlug
       { name: location.city, url: `https://dommedirectory.com/location/${citySlug}` },
       { name: serviceName, url: `https://dommedirectory.com/location/${citySlug}/${serviceSlug}` },
     ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      name: `${serviceName} Dommes in ${locationStr}`,
+      description: metaDescription,
+      url: `https://dommedirectory.com/location/${citySlug}/${serviceSlug}`,
+      numberOfItems: listingCount,
+      itemListElement: listings.slice(0, 10).map((listing, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: listing.title,
+        url: `https://dommedirectory.com${buildProfilePath(listing)}`,
+        ...(listing.primaryImage ? { image: listing.primaryImage } : {}),
+      })),
+    },
   ];
 
   return (
     <Layout>
       <SEO
-        title={`${serviceName} Dommes in ${locationStr}`}
+        title={`${serviceName} in ${locationStr} — ${listingCount} Verified Dommes (${new Date().getFullYear()})`}
         description={metaDescription}
         canonical={`https://dommedirectory.com/location/${citySlug}/${serviceSlug}`}
         geo={{ city: location.city, state: location.state, country: location.country }}

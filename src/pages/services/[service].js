@@ -73,20 +73,36 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
     ? `Find ${listingCount} professional domme${listingCount === 1 ? '' : 's'} offering ${serviceName} on DommeDirectory. Browse verified profiles, rates, and reviews.`
     : `Find professional dommes offering ${serviceName} on DommeDirectory. Browse verified profiles and book a session.`;
 
+  const pageUrl = `https://dommedirectory.com/services/${serviceSlug}`;
   const jsonLd = [
     generateBreadcrumbSchema([
       { name: 'Home', url: 'https://dommedirectory.com' },
       { name: 'Services', url: 'https://dommedirectory.com/cities' },
-      { name: serviceName, url: `https://dommedirectory.com/services/${serviceSlug}` },
+      { name: serviceName, url: pageUrl },
     ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      name: `${serviceName} Dommes`,
+      description: metaDescription,
+      url: pageUrl,
+      numberOfItems: listingCount,
+      itemListElement: listings.slice(0, 10).map((listing, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: listing.title,
+        url: `https://dommedirectory.com${buildProfilePath(listing)}`,
+        ...(listing.primaryImage ? { image: listing.primaryImage } : {}),
+      })),
+    },
   ];
 
   return (
     <Layout>
       <SEO
-        title={`${serviceName} Dommes`}
+        title={`${serviceName} Dommes — ${listingCount} Verified Providers (${new Date().getFullYear()})`}
         description={metaDescription}
-        canonical={`https://dommedirectory.com/services/${serviceSlug}`}
+        canonical={pageUrl}
         jsonLd={jsonLd}
       />
 
