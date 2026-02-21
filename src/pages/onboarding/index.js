@@ -894,7 +894,7 @@ export default function Onboarding() {
             </p>
 
             <div className="bg-[#1a1a1a] rounded-lg p-6 max-w-sm mx-auto">
-              <h3 className="text-white font-semibold mb-4">What's next?</h3>
+              <h3 className="text-white font-semibold mb-4">What&apos;s next?</h3>
               <ul className="text-left text-gray-400 space-y-3">
                 <li className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
