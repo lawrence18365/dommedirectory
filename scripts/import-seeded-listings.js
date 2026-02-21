@@ -128,6 +128,12 @@ const normalizeKeyText = (value) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const generateSlug = (title) => {
+  const base = normalizeKeyText(title).replace(/\s+/g, '-');
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  return `${base}-${randomSuffix}`;
+};
+
 const buildCanonicalKey = ({ title, sourceUrl, website, handle, email }) => {
   const websiteDomain = getRootDomain(website);
   if (websiteDomain) return `website:${websiteDomain}`;
@@ -354,6 +360,7 @@ async function main() {
       profile_id: null,
       location_id: locationId,
       title,
+      slug: generateSlug(title),
       description,
       services: {},
       rates: {},

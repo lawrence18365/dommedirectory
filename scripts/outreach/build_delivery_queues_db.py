@@ -177,7 +177,7 @@ def main():
         .limit(limit)
 
     if city_filter:
-        query = query.eq('city', city_filter)
+        query = query.ilike('city', f'%{city_filter}%')
 
     result = query.execute()
     rows = result.data or []
@@ -198,7 +198,6 @@ def main():
             'updated_at': now_iso(),
         }
 
-        # If we found an email, store it for follow-up sequence
         if email_found and not row.get('seed_contact_email'):
             update['seed_contact_email'] = email_found
 

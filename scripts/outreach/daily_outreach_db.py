@@ -363,7 +363,7 @@ def main():
         .limit(daily_limit * 3)  # fetch extra — some may fail classification checks
 
     if city_filter:
-        query = query.eq('city', city_filter)
+        query = query.ilike('city', f'%{city_filter}%')
 
     result = query.execute()
     candidates = result.data or []

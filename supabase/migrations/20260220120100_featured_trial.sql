@@ -14,10 +14,7 @@ ALTER TABLE featured_credits
 
 -- Add expires_at so the scheduler knows when to turn off is_featured
 ALTER TABLE featured_credits
-  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
-    GENERATED ALWAYS AS (
-      created_at + (seconds_granted - seconds_used) * INTERVAL '1 second'
-    ) STORED;
+  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
 -- Function called by the API route when a provider activates their claim trial
 CREATE OR REPLACE FUNCTION public.grant_claim_trial(
@@ -53,8 +50,8 @@ BEGIN
   WHERE id = p_request_id;
 
   -- Grant the featured credit
-  INSERT INTO featured_credits (profile_id, seconds_granted, seconds_used, reason, source)
-  VALUES (p_profile_id, v_seconds, 0, '7-day claim trial', 'claim_trial')
+  INSERT INTO featured_credits (profile_id, seconds_granted, seconds_used, reason, source, expires_at)
+  VALUES (p_profile_id, v_seconds, 0, '7-day claim trial', 'claim_trial', now() + INTERVAL '7 days')
   RETURNING id INTO v_credit_id;
 
   -- Audit log
