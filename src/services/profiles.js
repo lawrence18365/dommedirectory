@@ -57,12 +57,24 @@ export const updateProfile = async (profileId, profileData) => {
       updatePayload.display_name = profileData.display_name;
     }
 
+    if (Object.prototype.hasOwnProperty.call(profileData, 'tagline')) {
+      updatePayload.tagline = profileData.tagline;
+    }
+
     if (Object.prototype.hasOwnProperty.call(profileData, 'bio')) {
       updatePayload.bio = profileData.bio;
     }
 
     if (Object.prototype.hasOwnProperty.call(profileData, 'primary_location_id')) {
       updatePayload.primary_location_id = profileData.primary_location_id;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'service_area_miles')) {
+      updatePayload.service_area_miles = profileData.service_area_miles;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'faq')) {
+      updatePayload.faq = profileData.faq;
     }
 
     if (Object.prototype.hasOwnProperty.call(profileData, 'secondary_locations')) {
