@@ -29,6 +29,37 @@ const parseArgs = () => {
   return parsed;
 };
 
+const loadEnvFile = (filePath) => {
+  if (!fs.existsSync(filePath)) return;
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    if (!key || process.env[key]) continue;
+
+    let value = trimmed.slice(eqIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[key] = value;
+  }
+};
+
+const bootstrapEnv = (rootDir) => {
+  loadEnvFile(path.resolve(rootDir, '.env'));
+  loadEnvFile(path.resolve(rootDir, '.env.local'));
+};
+
 const isDateString = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 const chunk = (items, size) => {
@@ -42,6 +73,11 @@ const chunk = (items, size) => {
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const isPlaceholderEnvValue = (value) => {
+  if (!value || typeof value !== 'string') return true;
+  return /your-project-ref|your_supabase_|example/i.test(value);
 };
 
 const median = (numbers) => {
@@ -152,15 +188,16 @@ const loadPrimaryMetro = (rootDir) => {
 
 const main = async () => {
   const rootDir = process.cwd();
+  bootstrapEnv(rootDir);
   const args = parseArgs();
   const metro = loadPrimaryMetro(rootDir);
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey || isPlaceholderEnvValue(supabaseUrl) || isPlaceholderEnvValue(serviceRoleKey)) {
     throw new Error(
-      'Missing required env vars: SUPABASE_URL|NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
+      'Missing valid Supabase env vars. Set SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY with real production values.'
     );
   }
 

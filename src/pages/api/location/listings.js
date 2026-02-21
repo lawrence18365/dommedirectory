@@ -28,39 +28,71 @@ export default async function handler(req, res) {
     const offset = Math.max(0, Number(req.query.offset || 0) || 0);
     const featuredOnly = String(req.query.featured || '').toLowerCase() === 'true';
 
-    const { data: listings, error: listingsError } = await db
-      .from('listings')
-      .select(`
+    const selectWithSlug = `
+      id,
+      slug,
+      profile_id,
+      location_id,
+      title,
+      description,
+      services,
+      rates,
+      is_active,
+      is_featured,
+      created_at,
+      updated_at,
+      is_seeded,
+      seed_source_url,
+      seed_source_label,
+      seed_contact_email,
+      seed_contact_website,
+      seed_contact_handle,
+      claimed_at,
+      removed_at,
+      removed_reason,
+      profiles(
         id,
-        profile_id,
-        location_id,
-        title,
-        description,
-        services,
-        rates,
-        is_active,
-        is_featured,
-        created_at,
-        updated_at,
-        profiles!inner(
-          id,
-          display_name,
-          is_verified,
-          verification_tier,
-          last_active_at
-        ),
-        media(id, storage_path, is_primary)
-      `)
+        display_name,
+        is_verified,
+        verification_tier,
+        premium_tier,
+        last_active_at
+      ),
+      media(id, storage_path, is_primary)
+    `;
+
+    const selectWithoutSlug = selectWithSlug.replace('slug,\n', '');
+
+    let listingsResponse = await db
+      .from('listings')
+      .select(selectWithSlug)
       .eq('location_id', locationId)
       .eq('is_active', true)
       .limit(500);
+
+    if (listingsResponse.error?.code === '42703') {
+      listingsResponse = await db
+        .from('listings')
+        .select(selectWithoutSlug)
+        .eq('location_id', locationId)
+        .eq('is_active', true)
+        .limit(500);
+    }
+
+    const { data: listings, error: listingsError } = listingsResponse;
 
     if (listingsError) {
       return res.status(500).json({ error: 'Failed to load location listings' });
     }
 
     const listingIds = (listings || []).map((listing) => listing.id);
-    const profileIds = [...new Set((listings || []).map((listing) => listing.profile_id))];
+    const profileIds = [
+      ...new Set(
+        (listings || [])
+          .map((listing) => listing.profile_id)
+          .filter(Boolean)
+      ),
+    ];
 
     let reviews = [];
     if (listingIds.length > 0) {

@@ -32,7 +32,7 @@ export default function CategoryPage({ category, posts }) {
 }
 
 export async function getStaticPaths() {
-  const categories = await fetchCategories();
+  const { categories = [] } = await fetchCategories();
   const paths = categories.map((category) => ({
     params: { slug: category.slug },
   }));
@@ -44,7 +44,7 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }) {
-  const categories = await fetchCategories();
+  const { categories = [] } = await fetchCategories();
   const category = categories.find((c) => c.slug === params.slug);
 
   if (!category) {
@@ -54,7 +54,7 @@ export async function getStaticProps({ params }) {
   }
 
   // Fetch posts by category id
-  const posts = await fetchPostsByCategory(category.id);
+  const { posts = [] } = await fetchPostsByCategory(category.id);
 
   return {
     props: {

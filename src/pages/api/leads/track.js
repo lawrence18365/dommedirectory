@@ -12,9 +12,14 @@ const ALLOWED_EVENT_TYPES = new Set([
   'report_submitted',
 ]);
 
+const IP_SALT = process.env.LEAD_EVENT_HASH_SALT;
+if (!IP_SALT && process.env.NODE_ENV === 'production') {
+  throw new Error('LEAD_EVENT_HASH_SALT env var is required in production');
+}
+
 const hashIp = (ip) => {
   if (!ip) return null;
-  const salt = process.env.LEAD_EVENT_HASH_SALT || 'dommedirectory-default-salt';
+  const salt = IP_SALT || 'dev-salt';
   return crypto
     .createHash('sha256')
     .update(`${salt}:${ip}`)
@@ -51,6 +56,8 @@ export default async function handler(req, res) {
       utm_source = null,
       utm_medium = null,
       utm_campaign = null,
+      utm_term = null,
+      utm_content = null,
       metadata = {},
     } = body;
 
@@ -65,7 +72,7 @@ export default async function handler(req, res) {
     const [{ data: listing, error: listingError }, user] = await Promise.all([
       admin
         .from('listings')
-        .select('id, profile_id')
+        .select('id, profile_id, is_active')
         .eq('id', listingId)
         .maybeSingle(),
       getUserFromRequest(req),
@@ -79,9 +86,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Listing not found' });
     }
 
+    if (!listing.is_active) {
+      return res.status(410).json({ error: 'Listing is inactive' });
+    }
+
     const insertPayload = {
       listing_id: listing.id,
-      profile_id: listing.profile_id,
+      profile_id: listing.profile_id || null,
       actor_user_id: user?.id || null,
       visitor_id: visitorId,
       session_id: sessionId,
@@ -92,6 +103,8 @@ export default async function handler(req, res) {
       utm_source,
       utm_medium,
       utm_campaign,
+      utm_term,
+      utm_content,
       user_agent: req.headers['user-agent'] || null,
       ip_hash: hashIp(getClientIp(req)),
       metadata: metadata && typeof metadata === 'object' ? metadata : {},

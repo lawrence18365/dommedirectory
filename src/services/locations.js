@@ -36,7 +36,7 @@ export const getLocationsGrouped = async () => {
     }
 
     const { locations, error } = await getAllLocations();
-    
+
     if (error) throw error;
 
     const { data: listingsData, error: listingsError } = await supabase
@@ -51,29 +51,29 @@ export const getLocationsGrouped = async () => {
       acc[listing.location_id] = (acc[listing.location_id] || 0) + 1;
       return acc;
     }, {});
-    
+
     // Group locations by country and state
     const grouped = locations.reduce((acc, location) => {
       // Create country if it doesn't exist
       if (!acc[location.country]) {
         acc[location.country] = {};
       }
-      
+
       // Create state if it doesn't exist
       if (!acc[location.country][location.state]) {
         acc[location.country][location.state] = [];
       }
-      
+
       // Add city to state
       acc[location.country][location.state].push({
         id: location.id,
         city: location.city,
         listingCount: listingCounts[location.id] || 0
       });
-      
+
       return acc;
     }, {});
-    
+
     return { grouped, error: null };
   } catch (error) {
     console.error('Error grouping locations:', error.message);
@@ -205,7 +205,7 @@ export const getListingsByLocation = async (locationId, options = {}) => {
       .from('listings')
       .select(`
         *,
-        profiles!inner(id, display_name, is_verified, verification_tier),
+        profiles(id, display_name, is_verified, verification_tier, premium_tier),
         media(id, storage_path, is_primary)
       `)
       .eq('location_id', locationId)
@@ -248,9 +248,9 @@ export const getTopLocations = async (limit = 12) => {
       .from('listings')
       .select('location_id')
       .eq('is_active', true);
-      
+
     if (listingsError) throw listingsError;
-    
+
     // Count listings by location using JS
     const locationCounts = {};
     listingsData.forEach(listing => {
@@ -259,38 +259,38 @@ export const getTopLocations = async (limit = 12) => {
         locationCounts[locationId] = (locationCounts[locationId] || 0) + 1;
       }
     });
-    
+
     // Convert to array and sort
     const sortedLocationIds = Object.entries(locationCounts)
       .map(([locationId, count]) => ({ locationId, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, limit)
       .map(item => item.locationId);
-    
+
     if (sortedLocationIds.length === 0) {
       // If no locations with listings, just return some locations
       const { data: defaultLocations } = await supabase
         .from('locations')
         .select('*')
         .limit(limit);
-        
-      return { locations: defaultLocations.map(loc => ({...loc, listing_count: 0})), error: null };
+
+      return { locations: defaultLocations.map(loc => ({ ...loc, listing_count: 0 })), error: null };
     }
-    
+
     // Get location details
     const { data: locations, error: locationsError } = await supabase
       .from('locations')
       .select('*')
       .in('id', sortedLocationIds);
-      
+
     if (locationsError) throw locationsError;
-    
+
     // Add count data
     const topLocations = locations.map(location => ({
       ...location,
       listing_count: locationCounts[location.id] || 0
     })).sort((a, b) => b.listing_count - a.listing_count);
-    
+
     return { locations: topLocations, error: null };
   } catch (error) {
     console.error('Error fetching top locations:', error.message);

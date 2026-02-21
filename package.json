@@ -17,6 +17,11 @@
     "smoke:prod": "bash scripts/smoke-prod.sh",
     "admin:bootstrap": "node scripts/bootstrap-admin.js",
     "ops:daily-report": "node scripts/generate-daily-ops-report.js",
+    "outreach:queues": "python3 scripts/outreach/build_delivery_queues.py",
+    "outreach:daily": "python3 scripts/outreach/daily_outreach.py",
+    "outreach:forward-inbox": "python3 scripts/outreach/forward_inbox.py",
+    "seed:unclaimed": "node scripts/import-seeded-listings.js",
+    "seed:enrich": "node scripts/enrich-seeded-listings.js",
     "stripe:listen": "stripe listen --forward-to localhost:3000/api/payments/webhook"
   },
   "dependencies": {
@@ -39,7 +44,7 @@
     "react-dom": "^19.2.4",
     "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.55.0",
-    "stripe": "^18.0.0"
+    "stripe": "^18.5.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -48,6 +53,7 @@
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.19",
+    "dotenv": "^17.3.1",
     "eslint": "^9.39.2",
     "eslint-config-next": "^15.5.12",
     "prettier": "^3.6.2",

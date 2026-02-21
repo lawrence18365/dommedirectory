@@ -48,6 +48,8 @@ export default async function handler(req, res) {
       utm_source = null,
       utm_medium = null,
       utm_campaign = null,
+      utm_term = null,
+      utm_content = null,
     } = body;
 
     if (!listingId || !reason) {
@@ -109,6 +111,8 @@ export default async function handler(req, res) {
           utm_source,
           utm_medium,
           utm_campaign,
+          utm_term,
+          utm_content,
           user_agent: req.headers['user-agent'] || null,
           ip_hash: ipHash,
           metadata: {

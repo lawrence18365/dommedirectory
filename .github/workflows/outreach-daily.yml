@@ -1,0 +1,59 @@
+name: Daily Outreach
+
+on:
+  schedule:
+    # 15:00 UTC = 10:00 EST / 11:00 EDT — runs Mon-Fri only
+    - cron: '0 15 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      daily_limit:
+        description: 'Max messages to send (default: 8)'
+        required: false
+        default: '8'
+      city:
+        description: 'City slug (e.g. toronto, london). Leave blank for all.'
+        required: false
+
+concurrency:
+  group: outreach-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  outreach:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OUTREACH_REPLY_TO_EMAIL: ${{ secrets.OUTREACH_REPLY_TO_EMAIL }}
+      OUTREACH_SENDER_NAME: ${{ secrets.OUTREACH_SENDER_NAME }}
+      OUTREACH_SMTP_USERNAME: ${{ secrets.OUTREACH_SMTP_USERNAME }}
+      OUTREACH_SMTP_PASSWORD: ${{ secrets.OUTREACH_SMTP_PASSWORD }}
+      OUTREACH_SMTP_HOST: ${{ secrets.OUTREACH_SMTP_HOST }}
+      OUTREACH_SMTP_PORT: ${{ secrets.OUTREACH_SMTP_PORT }}
+      OUTREACH_DAILY_LIMIT: ${{ github.event.inputs.daily_limit || '8' }}
+      OUTREACH_CITY: ${{ github.event.inputs.city || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 supabase
+
+      - name: Run daily outreach
+        run: python scripts/outreach/daily_outreach_db.py
+
+      - name: Run day-4 follow-up sequence
+        run: python scripts/outreach/followup_sequence.py

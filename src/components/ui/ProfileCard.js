@@ -1,8 +1,18 @@
 import Link from 'next/link';
+import { buildProfilePath } from '../../utils/profileSlug';
 
 export default function ProfileCard({ profile }) {
+    const hasSlugFields = Boolean(
+        profile?.city ||
+        profile?.state ||
+        profile?.locations?.city ||
+        profile?.locations?.state
+    );
+    const href = profile?.href
+        || (hasSlugFields ? buildProfilePath(profile || {}) : null)
+        || (profile?.id ? `/listings/${profile.id}` : buildProfilePath(profile || {}));
     return (
-        <Link href={`/listings/${profile.id}`} className="group block relative overflow-hidden bg-[#1a1a1a] aspect-[3/4]">
+        <Link href={href} className="group block relative overflow-hidden bg-[#1a1a1a] aspect-[3/4]">
             {/* Profile Image */}
             <img
                 src={profile.image}

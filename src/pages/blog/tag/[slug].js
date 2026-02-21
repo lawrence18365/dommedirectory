@@ -32,7 +32,7 @@ export default function TagPage({ tag, posts }) {
 }
 
 export async function getStaticPaths() {
-  const tags = await fetchTags();
+  const { tags = [] } = await fetchTags();
   const paths = tags.map((tag) => ({
     params: { slug: tag.slug },
   }));
@@ -44,7 +44,7 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }) {
-  const tags = await fetchTags();
+  const { tags = [] } = await fetchTags();
   const tag = tags.find((t) => t.slug === params.slug);
 
   if (!tag) {
@@ -54,7 +54,7 @@ export async function getStaticProps({ params }) {
   }
 
   // Fetch posts by tag id
-  const posts = await fetchPostsByTag(tag.id);
+  const { posts = [] } = await fetchPostsByTag(tag.id);
 
   return {
     props: {

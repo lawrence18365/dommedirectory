@@ -38,20 +38,27 @@ export default function Onboarding() {
   const [initializing, setInitializing] = useState(true);
   const [locations, setLocations] = useState([]);
   const [locationsError, setLocationsError] = useState(null);
-  
+
   // Profile data
   const [profileData, setProfileData] = useState({
     display_name: '',
+    tagline: '',
     bio: '',
     primary_location_id: '',
+    service_area_miles: '',
+    social_links: { twitter: '', onlyfans: '' },
     profile_picture_url: null,
     marketing_opt_in: false,
     marketing_opt_in_at: null,
   });
+  const [faqItems, setFaqItems] = useState([
+    { question: '', answer: '' },
+    { question: '', answer: '' },
+  ]);
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const profileFileInputRef = useRef(null);
-  
+
   // Listing data
   const [listingData, setListingData] = useState({
     title: '',
@@ -95,8 +102,14 @@ export default function Onboarding() {
       setProfileData((prev) => ({
         ...prev,
         display_name: profile?.display_name || user.user_metadata?.display_name || user.email?.split('@')[0] || '',
+        tagline: profile?.tagline || '',
         bio: profile?.bio || '',
         primary_location_id: profile?.primary_location_id || user.user_metadata?.primary_location_id || '',
+        service_area_miles: profile?.service_area_miles ? String(profile.service_area_miles) : '',
+        social_links: {
+          twitter: profile?.social_links?.twitter || '',
+          onlyfans: profile?.social_links?.onlyfans || '',
+        },
         profile_picture_url: profile?.profile_picture_url || null,
         marketing_opt_in: Boolean(profile?.marketing_opt_in ?? user.user_metadata?.marketing_opt_in),
         marketing_opt_in_at:
@@ -104,6 +117,10 @@ export default function Onboarding() {
           user.user_metadata?.marketing_opt_in_at ||
           null,
       }));
+
+      if (Array.isArray(profile?.faq) && profile.faq.length > 0) {
+        setFaqItems(profile.faq);
+      }
 
       if (profile?.primary_location_id) {
         setListingData((prev) => ({ ...prev, locationId: profile.primary_location_id }));
@@ -186,10 +203,18 @@ export default function Onboarding() {
       const marketingOptInAt = marketingOptIn
         ? new Date().toISOString()
         : null;
+      const validFaq = faqItems.filter((f) => f.question.trim() && f.answer.trim());
       const payload = {
         ...profileData,
         display_name: sanitizeString(profileData.display_name, 100),
+        tagline: sanitizeString(profileData.tagline || '', 200),
         bio: sanitizedBio,
+        service_area_miles: profileData.service_area_miles ? Number(profileData.service_area_miles) : null,
+        social_links: {
+          twitter: profileData.social_links.twitter.trim(),
+          onlyfans: profileData.social_links.onlyfans.trim(),
+        },
+        faq: validFaq,
         marketing_opt_in: marketingOptIn,
         marketing_opt_in_at: marketingOptInAt,
       };
@@ -221,7 +246,7 @@ export default function Onboarding() {
         bio_length: payload.bio.length,
         marketing_opt_in: Boolean(payload.marketing_opt_in),
       });
-      
+
       setLoading(false);
       handleNext();
     } catch (err) {
@@ -234,10 +259,10 @@ export default function Onboarding() {
   // Listing Step
   const handleListingImageSelect = (e) => {
     const files = Array.from(e.target.files);
-    const validFiles = files.filter(file => 
+    const validFiles = files.filter(file =>
       file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024
     );
-    
+
     if (validFiles.length !== files.length) {
       alert('Some files were skipped. Images must be under 5MB.');
     }
@@ -291,12 +316,12 @@ export default function Onboarding() {
     setLoading(true);
 
     // Create listing
-      const { listing, error } = await createListing(user.id, {
-        title: sanitizeString(listingData.title, 200),
-        description: sanitizeString(listingData.description, 5000),
-        locationId: listingData.locationId,
-        services: listingData.services,
-        rates: listingData.rates,
+    const { listing, error } = await createListing(user.id, {
+      title: sanitizeString(listingData.title, 200),
+      description: sanitizeString(listingData.description, 5000),
+      locationId: listingData.locationId,
+      services: listingData.services,
+      rates: listingData.rates,
     });
 
     if (error || !listing) {
@@ -374,7 +399,7 @@ export default function Onboarding() {
               const Icon = step.icon;
               const isActive = index === currentStep;
               const isCompleted = index < currentStep;
-              
+
               return (
                 <div key={step.id} className="flex items-center">
                   <div className={`
@@ -443,7 +468,7 @@ export default function Onboarding() {
             {/* Profile Photo */}
             <div className="flex justify-center mb-6">
               <div className="relative">
-                <div 
+                <div
                   className="w-32 h-32 rounded-full bg-[#1a1a1a] border-2 border-gray-700 flex items-center justify-center overflow-hidden cursor-pointer hover:border-red-600 transition-colors"
                   onClick={() => profileFileInputRef.current?.click()}
                 >
@@ -500,6 +525,23 @@ export default function Onboarding() {
 
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-2">
+                  Headline <span className="text-gray-500 font-normal">(optional — used in search results)</span>
+                </label>
+                <input
+                  type="text"
+                  value={profileData.tagline}
+                  onChange={(e) => setProfileData({ ...profileData, tagline: e.target.value })}
+                  placeholder="e.g. London-based lifestyle dominatrix specialising in financial domination"
+                  className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-600"
+                  maxLength={200}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {profileData.tagline.length}/200 — appears as your Google search snippet
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 text-sm font-medium mb-2">
                   <MapPin className="w-4 h-4 inline mr-1" />
                   Location *
                 </label>
@@ -531,6 +573,88 @@ export default function Onboarding() {
                 <p className={`mt-2 text-xs ${profileData.bio.trim().length >= MIN_PROFILE_BIO_LENGTH ? 'text-green-400' : 'text-gray-500'}`}>
                   {profileData.bio.trim().length}/{MIN_PROFILE_BIO_LENGTH}+ characters recommended for ranking and trust
                 </p>
+              </div>
+
+              {/* Social links */}
+              <div className="space-y-3">
+                <label className="block text-gray-300 text-sm font-medium">
+                  Social Profiles <span className="text-gray-500 font-normal">(optional — helps with search rankings)</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-400 text-sm w-24 shrink-0">Twitter / X</span>
+                  <input
+                    type="text"
+                    value={profileData.social_links.twitter}
+                    onChange={(e) => setProfileData({ ...profileData, social_links: { ...profileData.social_links, twitter: e.target.value } })}
+                    placeholder="@yourhandle or full URL"
+                    className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-400 text-sm w-24 shrink-0">OnlyFans</span>
+                  <input
+                    type="text"
+                    value={profileData.social_links.onlyfans}
+                    onChange={(e) => setProfileData({ ...profileData, social_links: { ...profileData.social_links, onlyfans: e.target.value } })}
+                    placeholder="onlyfans.com/yourname or @handle"
+                    className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Service area */}
+              <div>
+                <label className="block text-gray-300 text-sm font-medium mb-2">
+                  How far can you travel? <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <select
+                  value={profileData.service_area_miles}
+                  onChange={(e) => setProfileData({ ...profileData, service_area_miles: e.target.value })}
+                  className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-600"
+                >
+                  <option value="">Local only / not specified</option>
+                  <option value="10">Up to 10 miles</option>
+                  <option value="25">Up to 25 miles</option>
+                  <option value="50">Up to 50 miles</option>
+                  <option value="100">Up to 100 miles</option>
+                  <option value="999">Available to travel nationally</option>
+                </select>
+              </div>
+
+              {/* FAQ */}
+              <div className="space-y-3">
+                <label className="block text-gray-300 text-sm font-medium">
+                  FAQ <span className="text-gray-500 font-normal">(optional — boosts search appearance)</span>
+                </label>
+                <p className="text-xs text-gray-500">
+                  Add common client questions. These show as expandable answers directly in Google search results.
+                </p>
+                {faqItems.map((item, index) => (
+                  <div key={index} className="bg-[#111] border border-gray-800 rounded-lg p-4 space-y-2">
+                    <input
+                      type="text"
+                      value={item.question}
+                      onChange={(e) => {
+                        const updated = [...faqItems];
+                        updated[index] = { ...updated[index], question: e.target.value };
+                        setFaqItems(updated);
+                      }}
+                      placeholder={`Question ${index + 1} — e.g. Do you offer sessions outside London?`}
+                      className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-red-600 text-sm"
+                    />
+                    <textarea
+                      value={item.answer}
+                      onChange={(e) => {
+                        const updated = [...faqItems];
+                        updated[index] = { ...updated[index], answer: e.target.value };
+                        setFaqItems(updated);
+                      }}
+                      placeholder="Your answer..."
+                      rows={2}
+                      className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-red-600 text-sm resize-none"
+                    />
+                  </div>
+                ))}
               </div>
 
               <label className="flex items-start gap-3 rounded-lg border border-gray-700 bg-[#151515] px-3 py-3 cursor-pointer">
@@ -768,9 +892,9 @@ export default function Onboarding() {
             <p className="text-gray-400 text-lg max-w-md mx-auto">
               Your profile and listing have been created. You can now start receiving inquiries from clients.
             </p>
-            
+
             <div className="bg-[#1a1a1a] rounded-lg p-6 max-w-sm mx-auto">
-              <h3 className="text-white font-semibold mb-4">What&apos;s next?</h3>
+              <h3 className="text-white font-semibold mb-4">What's next?</h3>
               <ul className="text-left text-gray-400 space-y-3">
                 <li className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -785,6 +909,10 @@ export default function Onboarding() {
                   <span>You can edit your listing anytime</span>
                 </li>
               </ul>
+              <div className="mt-5 pt-5 border-t border-gray-800">
+                <p className="text-sm font-semibold text-yellow-500 mb-2">Want to rank #1?</p>
+                <p className="text-xs text-gray-400">Invite a fellow provider using the referral link in your dashboard. You both instantly unlock 7 days of Premium Featured Placement.</p>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto pt-4">

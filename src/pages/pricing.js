@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { useUser, useSessionContext } from '@supabase/auth-helpers-react';
+import { Loader2 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import SEO from '../components/ui/SEO';
 import PricingCard from '../components/ui/PricingCard';
@@ -25,9 +28,9 @@ const DOMME_TIERS = [
   },
   {
     tier: 'pro',
-    price: 'Request Quote',
-    period: '',
-    description: 'Lead growth add-on (manual billing)',
+    price: '49',
+    period: 'month',
+    description: 'Lead growth add-on',
     features: [
       'Everything in Basic',
       'Featured city/category placement',
@@ -38,7 +41,7 @@ const DOMME_TIERS = [
       'Founding provider showcase eligibility',
     ],
     popular: true,
-    ctaText: 'Apply for Pro',
+    ctaText: 'Upgrade to Pro',
   },
   {
     tier: 'elite',
@@ -86,8 +89,8 @@ const CLIENT_FEATURES = [
 
 const FAQS = [
   {
-    question: 'How does DommeDirectory make money right now?',
-    answer: 'Current revenue is manual: featured placement, verification services, and analytics add-ons. We only charge when lead flow is proven.',
+    question: 'How does DommeDirectory drive value?',
+    answer: 'We rank in Google for high-intent client searches in your specific city, converting local SEO traffic directly to your inbox.',
   },
   {
     question: 'Is my privacy protected?',
@@ -99,11 +102,11 @@ const FAQS = [
   },
   {
     question: 'How fast is onboarding?',
-    answer: 'Founding providers are onboarded manually with a short review queue. We optimize for quality and safety over volume.',
+    answer: 'Basic tier onboarding is instant. Pro tier verification takes less than 24 hours to review and activate.',
   },
   {
-    question: 'What payment methods are supported?',
-    answer: 'Phase 1 uses manual billing only while we finalize an adult-compatible payment workflow for automation.',
+    question: 'How does billing work?',
+    answer: 'Billing is processed securely through Stripe. You can cancel or change your plan at any time through the billing portal in your dashboard.',
   },
 ];
 
@@ -134,11 +137,59 @@ function FAQItem({ question, answer, isOpen, onClick }) {
 }
 
 export default function Pricing() {
+  const router = useRouter();
+  const user = useUser();
+  const { session } = useSessionContext();
   const { showToast } = useToast();
   const [openFaq, setOpenFaq] = useState(0);
+  const [loadingTier, setLoadingTier] = useState(null);
 
-  const handleSubscribe = (tier) => {
-    showToast(`Application started for ${tier}. Our team will follow up for manual onboarding.`, 'info');
+  useEffect(() => {
+    if (router.query.checkout_canceled) {
+      showToast('Checkout was canceled.', 'info');
+      router.replace('/pricing', undefined, { shallow: true });
+    }
+  }, [router.query, router, showToast]);
+
+  const handleSubscribe = async (tier) => {
+    if (tier === 'basic') {
+      router.push(user ? '/dashboard' : '/auth/register');
+      return;
+    }
+
+    if (tier === 'elite') {
+      window.location.href = 'mailto:hello@dommedirectory.com?subject=Elite Pricing Inquiry';
+      return;
+    }
+
+    if (!user || !session) {
+      router.push(`/auth/login?redirect=/pricing`);
+      return;
+    }
+
+    setLoadingTier(tier);
+    try {
+      const resp = await fetch('/api/payments/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          returnUrl: window.location.origin,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || 'Failed to start checkout');
+      }
+
+      window.location.href = data.url;
+    } catch (error) {
+      showToast(error.message, 'error');
+      setLoadingTier(null);
+    }
   };
 
   return (
@@ -228,7 +279,7 @@ export default function Pricing() {
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-900/20 via-red-900/10 to-dark-300 border border-gray-700 p-8 lg:p-12 text-center">
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/20 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-red-600/10 rounded-full blur-2xl" />
-          
+
           <div className="relative">
             <h2 className="text-3xl font-bold text-white mb-4">
               Ready to Become a Founding Provider?

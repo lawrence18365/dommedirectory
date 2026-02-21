@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Script from 'next/script';
 import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
 import SEO, { generateListingSchema, generateProfilePageSchema } from '../../components/ui/SEO';
@@ -16,6 +17,15 @@ import {
 } from '../../services/leadEvents';
 import { ReviewCard, ReviewForm } from '../../components/ui/ReviewCard';
 import { MessageSquare, Loader2, Star } from 'lucide-react';
+import {
+  getSafePublicUrl,
+  isPublicBusinessEmail,
+  normalizeEmail,
+} from '../../utils/seededContact';
+import { buildProfilePath } from '../../utils/profileSlug';
+import { generateBreadcrumbSchema, generateFAQSchema } from '../../components/ui/SEO';
+import { buildPlatformLinks, getTwitterHandle } from '../../utils/affiliateLinks';
+import { slugifyService } from '../../utils/services';
 
 // Star Rating Component
 function StarRating({ rating, size = 'sm' }) {
@@ -27,6 +37,76 @@ function StarRating({ rating, size = 'sm' }) {
           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
         </svg>
       ))}
+    </div>
+  );
+}
+
+// Platform Links Component — affiliate-wrapped content platform buttons
+function PlatformLinks({ links, isPremium = true, onTrack }) {
+  if (!links || links.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map((link) => {
+        const Element = isPremium ? 'a' : 'span';
+        const props = isPremium
+          ? {
+            href: link.url,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            onClick: () => onTrack && onTrack(link.trackingKey),
+          }
+          : {};
+
+        return (
+          <Element
+            key={link.platformId}
+            {...props}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-opacity ${isPremium ? 'hover:opacity-80 cursor-pointer' : 'opacity-60 cursor-default'} ${link.badgeColor}`}
+          >
+            {link.label}
+            {link.monetised && isPremium && (
+              <span className="text-[10px] opacity-60 ml-0.5">↗</span>
+            )}
+          </Element>
+        );
+      })}
+    </div>
+  );
+}
+
+// Twitter embed widget — shows their feed inline for discovery
+function TwitterEmbed({ handle }) {
+  if (!handle) return null;
+  return (
+    <div className="rounded-lg border border-gray-800 overflow-hidden bg-[#0a0a0a]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+        <p className="text-white text-sm font-medium">Latest from @{handle}</p>
+        <a
+          href={`https://twitter.com/${handle}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-gray-500 hover:text-white transition-colors"
+        >
+          View profile →
+        </a>
+      </div>
+      <div className="p-4">
+        <a
+          className="twitter-timeline"
+          data-height="400"
+          data-theme="dark"
+          data-chrome="noheader nofooter noborders transparent"
+          data-tweet-limit="3"
+          href={`https://twitter.com/${handle}?ref_src=dommedirectory`}
+        >
+          Loading tweets from @{handle}…
+        </a>
+        <Script
+          src="https://platform.twitter.com/widgets.js"
+          strategy="lazyOnload"
+          charSet="utf-8"
+        />
+      </div>
     </div>
   );
 }
@@ -80,30 +160,41 @@ function PhotoLightbox({ photos, initialIndex, isOpen, onClose }) {
   );
 }
 
-export async function getServerSideProps(context) {
-  const { id } = context.params;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const appendQueryString = (path, query = {}, routeParamKey) => {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (key === routeParamKey || value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, String(item)));
+      return;
+    }
+    params.append(key, String(value));
+  });
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+};
+
+export async function getListingPagePropsById(id) {
   if (!isSupabaseConfigured) {
     return {
-      props: {
-        listing: null,
-        similarListings: [],
-        error: 'Listing data is unavailable until Supabase is configured.',
-      },
+      listing: null,
+      similarListings: [],
+      error: 'Listing data is unavailable until Supabase is configured.',
     };
   }
 
   try {
-    // Fetch listing with all related data
     const { data: listing, error } = await supabase
       .from('listings')
       .select(`
         *,
-        profiles!inner(
-          id, display_name, bio, is_verified, profile_picture_url,
+        profiles(
+          id, display_name, bio, tagline, faq, is_verified, profile_picture_url,
           contact_email, contact_phone, website, social_links,
           services_offered, verification_tier, response_time_hours,
-          last_active_at, created_at
+          last_active_at, created_at, premium_tier
         ),
         locations!inner(id, city, state, country),
         media(id, storage_path, is_primary)
@@ -113,24 +204,23 @@ export async function getServerSideProps(context) {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return { notFound: true };
+        return { listing: null, similarListings: [], error: null, notFound: true };
       }
       throw error;
     }
 
     if (!listing) {
-      return { notFound: true };
+      return { listing: null, similarListings: [], error: null, notFound: true };
     }
 
-    // Fetch similar listings from the same location
     let similarListings = [];
     if (listing.location_id) {
       const { data: similar } = await supabase
         .from('listings')
         .select(`
-          id, title,
-          profiles!inner(id, display_name, profile_picture_url),
-          locations!inner(id, city, country)
+          id, slug, title,
+          profiles(id, display_name, profile_picture_url),
+          locations!inner(id, city, state, country)
         `)
         .eq('location_id', listing.location_id)
         .eq('is_active', true)
@@ -141,25 +231,56 @@ export async function getServerSideProps(context) {
     }
 
     return {
-      props: {
-        listing,
-        similarListings,
-        error: null,
-      },
+      listing,
+      similarListings,
+      error: null,
+      notFound: false,
     };
   } catch (error) {
     console.error('Error fetching listing:', error);
     return {
-      props: {
-        listing: null,
-        similarListings: [],
-        error: 'Failed to load listing data',
-      },
+      listing: null,
+      similarListings: [],
+      error: 'Failed to load listing data',
+      notFound: false,
     };
   }
 }
 
-export default function ProfileDetail({ listing, similarListings, error: serverError }) {
+export async function getServerSideProps(context) {
+  const { id } = context.params;
+
+  if (!UUID_RE.test(id)) {
+    return { notFound: true };
+  }
+
+  const result = await getListingPagePropsById(id);
+
+  if (result.notFound) {
+    return { notFound: true };
+  }
+
+  if (!result.listing) {
+    return {
+      props: {
+        listing: result.listing,
+        similarListings: result.similarListings,
+        error: result.error,
+      },
+    };
+  }
+
+  const destination = appendQueryString(buildProfilePath(result.listing), context.query, 'id');
+
+  return {
+    redirect: {
+      destination,
+      permanent: true,
+    },
+  };
+}
+
+export default function ProfileDetail({ listing, similarListings, error: serverError, ratingData }) {
   const router = useRouter();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('about');
@@ -170,8 +291,16 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const [reportReason, setReportReason] = useState('Fake photos');
   const [reportDetails, setReportDetails] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [showClaimRequestModal, setShowClaimRequestModal] = useState(false);
+  const [claimProofMethod, setClaimProofMethod] = useState('website_code');
+  const [claimProofLocation, setClaimProofLocation] = useState('');
+  const [claimRequestSubmitting, setClaimRequestSubmitting] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [removeRequesterEmail, setRemoveRequesterEmail] = useState('');
+  const [removeReason, setRemoveReason] = useState('');
+  const [removeSubmitting, setRemoveSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
-  
+
   // Reviews state
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
@@ -217,7 +346,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!listing?.id) return;
+    if (!listing?.id || !listing?.is_active) return;
 
     trackLeadEvent({
       listingId: listing.id,
@@ -227,7 +356,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
         source: 'listing_page',
       },
     });
-  }, [listing?.id, listing?.locations?.city]);
+  }, [listing?.id, listing?.is_active, listing?.locations?.city]);
 
   useEffect(() => {
     if (!listing?.id) return;
@@ -297,12 +426,17 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   const hasRestrictedMedia = mediaItems.length > 0;
   const canViewMedia = !hasRestrictedMedia || mediaUnlocked;
 
+  const isPremium = profile.premium_tier === 'pro' || profile.premium_tier === 'elite';
+  const isOwnedProfile = currentUserId === listing.profile_id;
+
+  const photosArray = mediaItems.length > 0
+    ? mediaItems
+      .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+      .map((m, i) => ({ id: m.id, url: m.storage_path, type: i === 0 ? 'main' : 'gallery' }))
+    : [{ id: 'default', url: profile.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1500&fit=crop', type: 'main' }];
+
   const photos = canViewMedia
-    ? (mediaItems.length > 0
-      ? mediaItems
-        .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
-        .map((m, i) => ({ id: m.id, url: m.storage_path, type: i === 0 ? 'main' : 'gallery' }))
-      : [{ id: 'default', url: profile.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&h=1500&fit=crop', type: 'main' }])
+    ? (isPremium ? photosArray : photosArray.slice(0, 1))
     : [{
       id: 'gated',
       url:
@@ -313,6 +447,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
 
   // Build display data
   const displayName = profile.display_name || listing.title || 'Unknown';
+  const profilePath = buildProfilePath(listing);
   const locationStr = `${location.city || ''}${location.state ? ', ' + location.state : ''}${location.country ? ', ' + location.country : ''}`;
   const memberSince = profile.created_at ? new Date(profile.created_at).getFullYear() : 'N/A';
 
@@ -329,21 +464,66 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
 
   // Social links
   const socialLinks = profile.social_links || {};
-  const safeWebsiteUrl = (() => {
-    if (!profile.website) return null;
-
-    try {
-      const parsed = new URL(
-        profile.website.startsWith('http')
-          ? profile.website
-          : `https://${profile.website}`
-      );
-      if (!['http:', 'https:'].includes(parsed.protocol)) return null;
-      return parsed.toString();
-    } catch {
-      return null;
-    }
-  })();
+  const isListingActive = Boolean(listing.is_active);
+  const isSeededUnclaimed = Boolean(listing.is_seeded) && !listing.profile_id;
+  const isSeededUnclaimedActive = isListingActive && isSeededUnclaimed;
+  const sourceUrl = getSafePublicUrl(listing.seed_source_url);
+  const sourceLabel = listing.seed_source_label || 'public source';
+  const safeProfileWebsiteUrl = getSafePublicUrl(profile.website);
+  const safeSeedWebsiteUrl = getSafePublicUrl(listing.seed_contact_website);
+  const sourceFallbackWebsiteUrl = isSeededUnclaimedActive ? sourceUrl : null;
+  const contactWebsiteUrl =
+    safeProfileWebsiteUrl ||
+    (isSeededUnclaimedActive ? safeSeedWebsiteUrl || sourceFallbackWebsiteUrl : null);
+  const isSourceFallbackContact = Boolean(
+    isSeededUnclaimedActive &&
+    !safeProfileWebsiteUrl &&
+    !safeSeedWebsiteUrl &&
+    sourceFallbackWebsiteUrl
+  );
+  const contactWebsiteLabel = safeProfileWebsiteUrl
+    ? profile.website || safeProfileWebsiteUrl
+    : safeSeedWebsiteUrl
+      ? listing.seed_contact_website || safeSeedWebsiteUrl
+      : isSourceFallbackContact
+        ? 'View Source Profile'
+        : contactWebsiteUrl;
+  const websiteButtonEventType = isSourceFallbackContact
+    ? LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK
+    : LEAD_EVENT_TYPES.CONTACT_BOOKING_CLICK;
+  const websiteButtonLabel = isSourceFallbackContact ? 'View Source Profile' : 'Open Booking / Contact';
+  const seedEmailEligible = isSeededUnclaimedActive
+    ? isPublicBusinessEmail({
+      email: listing.seed_contact_email,
+      sourceUrl: listing.seed_source_url,
+      websiteUrl: listing.seed_contact_website || profile.website,
+    })
+    : false;
+  const contactEmail = profile.contact_email
+    ? profile.contact_email.trim()
+    : seedEmailEligible
+      ? normalizeEmail(listing.seed_contact_email)
+      : null;
+  const contactPhone = profile.contact_phone || null;
+  const contactHandle = isSeededUnclaimedActive && listing.seed_contact_handle ? listing.seed_contact_handle : null;
+  const canShowContactCtas = isListingActive;
+  const hasSocialLinks = Object.values(socialLinks).some(Boolean);
+  const hasDirectContact = Boolean(contactEmail || contactPhone || contactWebsiteUrl || contactHandle);
+  const platformLinks = buildPlatformLinks(socialLinks, listing.seed_contact_website);
+  const twitterHandle = getTwitterHandle(socialLinks);
+  const citySlug = (location.city || '').toLowerCase().replace(/\s+/g, '-');
+  const activeServices = servicesArray.filter((s) => s.included).map((s) => s.name);
+  const listingUnavailableMessage = 'This listing is no longer available.';
+  const claimVerificationCode =
+    currentUserId && listing?.id
+      ? `DD-${listing.id.replace(/-/g, '').slice(0, 6).toUpperCase()}-${currentUserId
+        .replace(/-/g, '')
+        .slice(0, 6)
+        .toUpperCase()}`
+      : null;
+  const claimProofMethodHint = claimProofMethod === 'website_code'
+    ? 'Add the code to your website homepage, contact page, or public bio.'
+    : 'Add the code to your source profile bio/description, then paste that profile URL.';
 
   const responseTimeLabel = profile.response_time_hours
     ? `${profile.response_time_hours} hour${profile.response_time_hours === 1 ? '' : 's'}`
@@ -353,25 +533,34 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
     : listing.updated_at
       ? new Date(listing.updated_at).toLocaleDateString()
       : 'Unknown';
-  const primaryContact = profile.contact_email
-    ? {
-        label: 'Send Booking Email',
-        href: `mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`,
-        eventType: LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK,
-      }
-    : profile.contact_phone
+  const primaryContact = !canShowContactCtas
+    ? null
+    : (!isPremium && !isSeededUnclaimedActive)
       ? {
-          label: 'Call Now',
-          href: `tel:${profile.contact_phone}`,
-          eventType: LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK,
-        }
-      : safeWebsiteUrl
+        label: isOwnedProfile ? 'Upgrade to Pro to Unlock Outbound Links' : 'Direct Link Locked (Provider is Basic)',
+        href: isOwnedProfile ? '/pricing' : '#',
+        eventType: 'locked_click',
+        disabled: !isOwnedProfile,
+      }
+      : contactEmail
         ? {
-            label: 'Visit Booking Website',
-            href: safeWebsiteUrl,
-            eventType: LEAD_EVENT_TYPES.CONTACT_BOOKING_CLICK,
+          label: 'Send Booking Email',
+          href: `mailto:${contactEmail}?subject=Booking Inquiry from DommeDirectory`,
+          eventType: LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK,
+        }
+        : contactPhone
+          ? {
+            label: 'Call Now',
+            href: `tel:${contactPhone}`,
+            eventType: LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK,
           }
-      : null;
+          : contactWebsiteUrl
+            ? {
+              label: websiteButtonLabel,
+              href: contactWebsiteUrl,
+              eventType: websiteButtonEventType,
+            }
+            : null;
 
   const handleUnlockMedia = () => {
     if (!currentUserId) {
@@ -395,15 +584,135 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
     showToast('Link copied to clipboard', 'success');
   };
 
-  const trackContactAction = (eventType) => {
+  const trackContactAction = (eventType, source = 'sidebar_cta') => {
+    if (!isListingActive) return;
+
     trackLeadEvent({
       listingId: listing.id,
       eventType,
       cityPage: location.city || null,
       metadata: {
-        source: 'sidebar_cta',
+        source,
       },
     });
+  };
+
+  const getAuthAccessToken = async () => {
+    if (!isSupabaseConfigured) return null;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  };
+
+  const openClaimRequest = () => {
+    if (!currentUserId) {
+      router.push(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      return;
+    }
+
+    setShowClaimRequestModal(true);
+  };
+
+  const handleSubmitClaimRequest = async () => {
+    if (!currentUserId) {
+      router.push(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      return;
+    }
+
+    if (!claimVerificationCode) {
+      showToast('Please log in again to create a claim request.', 'error');
+      return;
+    }
+
+    if (!claimProofLocation || claimProofLocation.trim().length < 5) {
+      showToast('Please add the page/profile URL where you placed the code.', 'error');
+      return;
+    }
+
+    setClaimRequestSubmitting(true);
+    try {
+      const token = await getAuthAccessToken();
+      if (!token) {
+        throw new Error('Please log in again to submit your claim request.');
+      }
+
+      const response = await fetch('/api/listings/claim-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          listingId: listing.id,
+          proofMethod: claimProofMethod,
+          proofLocation: claimProofLocation.trim(),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Unable to submit claim request');
+      }
+
+      setShowClaimRequestModal(false);
+      setClaimProofMethod('website_code');
+      setClaimProofLocation('');
+      showToast('Claim request submitted. We will review and verify ownership shortly.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Unable to submit claim request right now.', 'error');
+    } finally {
+      setClaimRequestSubmitting(false);
+    }
+  };
+
+  const handleSubmitRemoval = async () => {
+    const normalizedEmail = normalizeEmail(removeRequesterEmail);
+    if (!normalizedEmail) {
+      showToast('Please provide a valid email address.', 'error');
+      return;
+    }
+
+    if (!removeReason || removeReason.trim().length < 3) {
+      showToast('Please include a short reason for removal.', 'error');
+      return;
+    }
+
+    setRemoveSubmitting(true);
+    try {
+      const response = await fetch('/api/listings/removal-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          listingId: listing.id,
+          requesterEmail: normalizedEmail,
+          reason: removeReason.trim(),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to submit removal request');
+      }
+
+      setShowRemoveModal(false);
+      setRemoveRequesterEmail('');
+      setRemoveReason('');
+
+      if (result.autoRemoved) {
+        showToast('Listing removed successfully.', 'success');
+      } else {
+        showToast('Removal request submitted. Our team will review it within 24 hours.', 'success');
+      }
+
+      router.replace(router.asPath);
+    } catch (error) {
+      showToast(error.message || 'Unable to submit request right now.', 'error');
+    } finally {
+      setRemoveSubmitting(false);
+    }
   };
 
   const handleReport = async () => {
@@ -424,7 +733,7 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
           listingId: listing.id,
           reason: reportReason,
           details: reportDetails,
-          sourcePage: `/listings/${listing.id}`,
+          sourcePage: profilePath,
           visitorId,
           sessionId,
           cityPage: location.city || null,
@@ -453,11 +762,33 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
   return (
     <Layout>
       <SEO
-        title={`${displayName} - ${locationStr} | DommeDirectory`}
-        description={listing.description?.substring(0, 160) || `View ${displayName}'s profile on DommeDirectory`}
-        canonical={`https://dommedirectory.com/listings/${listing.id}`}
+        title={`${displayName} - ${locationStr}`}
+        description={
+          profile.tagline ||
+          listing.description?.substring(0, 160) ||
+          `View ${displayName}'s profile on DommeDirectory`
+        }
+        canonical={`https://dommedirectory.com${profilePath}`}
         robotsContent="index,follow,noimageindex,max-image-preview:none"
-        jsonLd={[generateListingSchema(listing), generateProfilePageSchema(listing)]}
+        ogImage={profile.profile_picture_url || 'https://dommedirectory.com/og-image.jpg'}
+        geo={{
+          city: location.city,
+          state: location.state,
+          country: location.country,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        }}
+        jsonLd={[
+          generateListingSchema(listing, ratingData),
+          generateProfilePageSchema(listing),
+          generateBreadcrumbSchema([
+            { name: 'Home', url: 'https://dommedirectory.com' },
+            { name: 'Locations', url: 'https://dommedirectory.com/cities' },
+            { name: location.city || 'Location', url: `https://dommedirectory.com/location/${(location.city || '').toLowerCase().replace(/\s+/g, '-')}` },
+            { name: displayName, url: `https://dommedirectory.com${profilePath}` },
+          ]),
+          ...(generateFAQSchema(profile.faq) ? [generateFAQSchema(profile.faq)] : []),
+        ].filter(Boolean)}
       />
 
       {/* Lightbox */}
@@ -499,6 +830,92 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
             <div className="flex gap-3">
               <Button variant="secondary" fullWidth onClick={() => setShowReportModal(false)}>Cancel</Button>
               <Button fullWidth isLoading={reportSubmitting} onClick={handleReport}>Submit Report</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClaimRequestModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg max-w-lg w-full p-6">
+            <h3 className="text-white text-lg font-semibold mb-2">Request Claim</h3>
+            <p className="text-gray-300 text-sm">
+              Add this code to your public profile, then submit the proof URL for review.
+            </p>
+            <div className="mt-3 rounded border border-amber-700/60 bg-amber-900/20 p-3">
+              <p className="text-xs uppercase tracking-wide text-amber-200">Verification code</p>
+              <p className="mt-1 font-mono text-sm text-amber-100">
+                {claimVerificationCode || 'Log in to generate a code'}
+              </p>
+            </div>
+
+            <label className="mt-4 block text-gray-300 text-sm mb-2" htmlFor="claim-method">
+              Proof method
+            </label>
+            <select
+              id="claim-method"
+              value={claimProofMethod}
+              onChange={(event) => setClaimProofMethod(event.target.value)}
+              className="w-full bg-gray-700 text-white rounded p-3 text-sm"
+            >
+              <option value="website_code">Website code</option>
+              <option value="source_profile_code">Source profile code</option>
+            </select>
+
+            <p className="mt-2 text-xs text-gray-400">{claimProofMethodHint}</p>
+
+            <label className="mt-4 block text-gray-300 text-sm mb-2" htmlFor="claim-proof-location">
+              Proof URL
+            </label>
+            <input
+              id="claim-proof-location"
+              type="text"
+              value={claimProofLocation}
+              onChange={(event) => setClaimProofLocation(event.target.value)}
+              placeholder="https://example.com/page-with-code"
+              className="w-full bg-gray-700 text-white rounded p-3 text-sm"
+            />
+
+            <div className="flex gap-3 mt-5">
+              <Button variant="secondary" fullWidth onClick={() => setShowClaimRequestModal(false)}>
+                Cancel
+              </Button>
+              <Button fullWidth isLoading={claimRequestSubmitting} onClick={handleSubmitClaimRequest}>
+                Submit Claim Request
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRemoveModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg max-w-md w-full p-6">
+            <h3 className="text-white text-lg font-semibold mb-4">Remove Listing</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Request removal if this listing should not be publicly visible.
+            </p>
+            <input
+              type="email"
+              value={removeRequesterEmail}
+              onChange={(event) => setRemoveRequesterEmail(event.target.value)}
+              placeholder="Business contact email"
+              className="w-full bg-gray-700 text-white rounded p-3 mb-3 text-sm"
+            />
+            <textarea
+              className="w-full bg-gray-700 text-white rounded p-3 mb-4 text-sm"
+              rows={3}
+              value={removeReason}
+              onChange={(event) => setRemoveReason(event.target.value)}
+              placeholder="Reason for removal"
+            />
+            <div className="flex gap-3">
+              <Button variant="secondary" fullWidth onClick={() => setShowRemoveModal(false)}>
+                Cancel
+              </Button>
+              <Button fullWidth isLoading={removeSubmitting} onClick={handleSubmitRemoval}>
+                Submit Request
+              </Button>
             </div>
           </div>
         </div>
@@ -633,18 +1050,91 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                   </div>
                 )}
 
-                {primaryContact && (
+                {/* Content Platforms — affiliate-wrapped, visible above the fold */}
+                {platformLinks.length > 0 && (
                   <div className="mt-5">
-                    <a
-                      href={primaryContact.href}
-                      onClick={() => trackContactAction(primaryContact.eventType)}
-                      target={primaryContact.href.startsWith('http') ? '_blank' : undefined}
-                      rel={primaryContact.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                    >
-                      <Button size="lg" fullWidth>
+                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Content & Platforms</p>
+                    {!isPremium && isOwnedProfile && (
+                      <div className="mb-3 text-red-400 text-xs font-semibold bg-red-900/20 p-2 rounded border border-red-900/50">
+                        Notice: Links are text-only. Upgrade to Pro to make them clickable.
+                      </div>
+                    )}
+                    <PlatformLinks
+                      links={platformLinks}
+                      isPremium={isPremium}
+                      onTrack={(platformId) =>
+                        trackLeadEvent({
+                          listingId: listing.id,
+                          eventType: LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK,
+                          cityPage: location.city || null,
+                          metadata: { source: 'platform_link', platform: platformId },
+                        })
+                      }
+                    />
+                  </div>
+                )}
+
+                {isSeededUnclaimedActive && (
+                  <div className="mt-5 rounded-lg border border-amber-700/60 bg-amber-900/20 p-4">
+                    <p className="text-sm font-semibold text-amber-200">
+                      This listing was created from publicly posted business information.
+                    </p>
+                    <p className="mt-1 text-sm text-amber-100/90">
+                      Claim or update this listing to manage details and earn founder featured placement.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-100/80">
+                      Source: {sourceUrl ? (
+                        <a
+                          href={sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-white"
+                        >
+                          {sourceLabel}
+                        </a>
+                      ) : sourceLabel}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" isLoading={claimRequestSubmitting} onClick={openClaimRequest}>
+                        Claim / Update
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setShowRemoveModal(true)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!canShowContactCtas && (
+                  <div className="mt-5 rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                    <p className="text-sm text-gray-300">{listingUnavailableMessage}</p>
+                  </div>
+                )}
+
+                {canShowContactCtas && primaryContact && (
+                  <div className="mt-5">
+                    {primaryContact.href === '#' ? (
+                      <Button size="lg" fullWidth variant="secondary" className="opacity-50 cursor-not-allowed">
                         {primaryContact.label}
                       </Button>
-                    </a>
+                    ) : (
+                      <a
+                        href={primaryContact.href}
+                        onClick={() => trackContactAction(primaryContact.eventType, 'header_primary_cta')}
+                        target={primaryContact.href.startsWith('http') ? '_blank' : undefined}
+                        rel={primaryContact.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      >
+                        <Button size="lg" fullWidth variant={isOwnedProfile && !isPremium ? 'primary' : 'default'}>
+                          {primaryContact.label}
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {canShowContactCtas && !primaryContact && (
+                  <div className="mt-5 rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                    <p className="text-sm text-gray-300">Contact details will appear once this listing is updated.</p>
                   </div>
                 )}
 
@@ -713,6 +1203,33 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                         <p className="text-gray-300 whitespace-pre-line leading-relaxed">{profile.bio}</p>
                       </div>
                     )}
+
+                    {/* Twitter / X feed embed */}
+                    {twitterHandle && isPremium && (
+                      <div className="mt-2">
+                        <TwitterEmbed handle={twitterHandle} />
+                      </div>
+                    )}
+                    {twitterHandle && !isPremium && isOwnedProfile && (
+                      <div className="mt-4 text-red-400 text-xs font-semibold bg-red-900/20 p-3 rounded border border-red-900/50">
+                        Notice: Your Twitter feed is hidden because you are on the Basic tier. Upgrade to Pro to embed your social feed.
+                      </div>
+                    )}
+
+                    {/* FAQ if provider has set one */}
+                    {profile.faq && Array.isArray(profile.faq) && profile.faq.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-white font-semibold mb-3">FAQ</h3>
+                        <div className="space-y-3">
+                          {profile.faq.map((item, i) => (
+                            <div key={i} className="bg-[#1a1a1a] border border-gray-800 rounded-lg p-4">
+                              <p className="text-white font-medium text-sm">{item.question}</p>
+                              <p className="text-gray-400 text-sm mt-1">{item.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -761,66 +1278,80 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
 
                 {activeTab === 'contact' && (
                   <div className="space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {profile.contact_email && (
-                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-                          <h4 className="text-gray-400 text-sm mb-1">Email</h4>
-                          <a
-                            href={`mailto:${profile.contact_email}`}
-                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK)}
-                            className="text-white hover:text-red-400 transition-colors"
-                          >
-                            {profile.contact_email}
-                          </a>
-                        </div>
-                      )}
-                      {profile.contact_phone && (
-                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-                          <h4 className="text-gray-400 text-sm mb-1">Phone</h4>
-                          <a
-                            href={`tel:${profile.contact_phone}`}
-                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK)}
-                            className="text-white hover:text-red-400 transition-colors"
-                          >
-                            {profile.contact_phone}
-                          </a>
-                        </div>
-                      )}
-                      {safeWebsiteUrl && (
-                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-                          <h4 className="text-gray-400 text-sm mb-1">Website</h4>
-                          <a
-                            href={safeWebsiteUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
-                            className="text-white hover:text-red-400 transition-colors"
-                          >
-                            {profile.website}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Social Links */}
-                    {Object.keys(socialLinks).length > 0 && (
-                      <div>
-                        <h3 className="text-white font-semibold mb-3">Social Links</h3>
-                        <div className="space-y-2">
-                          {Object.entries(socialLinks).map(([platform, handle]) => (
-                            handle && (
-                              <div key={platform} className="flex items-center gap-3 text-gray-300">
-                                <span className="capitalize text-gray-400 w-24">{platform}:</span>
-                                <span className="text-white">{handle}</span>
-                              </div>
-                            )
-                          ))}
-                        </div>
+                    {!canShowContactCtas ? (
+                      <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                        <p className="text-sm text-gray-300">{listingUnavailableMessage}</p>
                       </div>
-                    )}
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {contactEmail && (
+                            <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                              <h4 className="text-gray-400 text-sm mb-1">Email</h4>
+                              <a
+                                href={`mailto:${contactEmail}`}
+                                onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK, 'contact_tab_email')}
+                                className="text-white hover:text-red-400 transition-colors break-all"
+                              >
+                                {contactEmail}
+                              </a>
+                            </div>
+                          )}
+                          {contactPhone && (
+                            <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                              <h4 className="text-gray-400 text-sm mb-1">Phone</h4>
+                              <a
+                                href={`tel:${contactPhone}`}
+                                onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK, 'contact_tab_phone')}
+                                className="text-white hover:text-red-400 transition-colors"
+                              >
+                                {contactPhone}
+                              </a>
+                            </div>
+                          )}
+                          {contactWebsiteUrl && (
+                            <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                              <h4 className="text-gray-400 text-sm mb-1">Website</h4>
+                              <a
+                                href={contactWebsiteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK, 'contact_tab_website')}
+                                className="text-white hover:text-red-400 transition-colors break-all"
+                              >
+                                {contactWebsiteLabel || contactWebsiteUrl}
+                              </a>
+                            </div>
+                          )}
+                          {contactHandle && (
+                            <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                              <h4 className="text-gray-400 text-sm mb-1">Handle</h4>
+                              <p className="text-white">{contactHandle}</p>
+                            </div>
+                          )}
+                        </div>
 
-                    {!profile.contact_email && !profile.contact_phone && !profile.website && Object.keys(socialLinks).length === 0 && (
-                      <p className="text-gray-400">No contact information provided yet.</p>
+                        {/* Social Links */}
+                        {hasSocialLinks && (
+                          <div>
+                            <h3 className="text-white font-semibold mb-3">Social Links</h3>
+                            <div className="space-y-2">
+                              {Object.entries(socialLinks).map(([platform, handle]) => (
+                                handle && (
+                                  <div key={platform} className="flex items-center gap-3 text-gray-300">
+                                    <span className="capitalize text-gray-400 w-24">{platform}:</span>
+                                    <span className="text-white">{handle}</span>
+                                  </div>
+                                )
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {!hasDirectContact && !hasSocialLinks && (
+                          <p className="text-gray-400">No contact information provided yet.</p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -836,11 +1367,10 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
                             {[1, 2, 3, 4, 5].map((star) => (
                               <Star
                                 key={star}
-                                className={`w-4 h-4 ${
-                                  star <= Math.round(averageRating)
-                                    ? 'text-yellow-500 fill-yellow-500'
-                                    : 'text-gray-600'
-                                }`}
+                                className={`w-4 h-4 ${star <= Math.round(averageRating)
+                                  ? 'text-yellow-500 fill-yellow-500'
+                                  : 'text-gray-600'
+                                  }`}
                               />
                             ))}
                           </div>
@@ -927,74 +1457,124 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
               <div className="sticky top-20 space-y-4">
                 {/* CTA Card */}
                 <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-                  <h3 className="text-white font-semibold mb-4">Book a Session</h3>
-                  {profile.contact_email && (
-                    <a
-                      href={`mailto:${profile.contact_email}?subject=Booking Inquiry from DommeDirectory`}
-                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK)}
-                    >
-                      <Button fullWidth size="lg" className="mb-3">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                        Send Email
-                      </Button>
-                    </a>
-                  )}
-                  {profile.contact_phone && (
-                    <a
-                      href={`tel:${profile.contact_phone}`}
-                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK)}
-                    >
-                      <Button variant="secondary" fullWidth size="lg" className="mb-4">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                        Call
-                      </Button>
-                    </a>
-                  )}
+                  <h3 className="text-white font-semibold mb-4">
+                    {canShowContactCtas ? 'Book a Session' : 'Listing Status'}
+                  </h3>
 
-                  {safeWebsiteUrl && (
-                    <a
-                      href={safeWebsiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
-                    >
-                      <Button variant="ghost" fullWidth size="lg" className="mb-4">
-                        Open Booking Website
-                      </Button>
-                    </a>
-                  )}
+                  {!canShowContactCtas ? (
+                    <p className="text-sm text-gray-300">{listingUnavailableMessage}</p>
+                  ) : (
+                    <>
+                      {contactEmail && (
+                        <a
+                          href={`mailto:${contactEmail}?subject=Booking Inquiry from DommeDirectory`}
+                          onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_EMAIL_CLICK, 'sidebar_email_button')}
+                        >
+                          <Button fullWidth size="lg" className="mb-3">
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            Send Email
+                          </Button>
+                        </a>
+                      )}
+                      {contactPhone && (
+                        <a
+                          href={`tel:${contactPhone}`}
+                          onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_PHONE_CLICK, 'sidebar_phone_button')}
+                        >
+                          <Button variant="secondary" fullWidth size="lg" className="mb-3">
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                            Call
+                          </Button>
+                        </a>
+                      )}
+                      {contactWebsiteUrl && (
+                        <a
+                          href={contactWebsiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => trackContactAction(websiteButtonEventType, 'sidebar_website_button')}
+                        >
+                          <Button variant="ghost" fullWidth size="lg" className="mb-3">
+                            {websiteButtonLabel}
+                          </Button>
+                        </a>
+                      )}
+                      {!contactEmail && !contactPhone && !contactWebsiteUrl && (
+                        <p className="text-sm text-gray-400">Contact details will appear after profile updates.</p>
+                      )}
 
-                  <div className="space-y-3 pt-4 border-t border-gray-700">
-                    {profile.contact_email && (
-                      <div className="flex items-center gap-3 text-gray-300 text-sm">
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                        {profile.contact_email}
-                      </div>
-                    )}
-                    {profile.website && (
-                      <div className="flex items-center gap-3 text-gray-300 text-sm">
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
-                        {safeWebsiteUrl ? (
-                          <a
-                            href={safeWebsiteUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK)}
-                            className="hover:text-red-400 transition-colors"
-                          >
-                            {profile.website}
-                          </a>
-                        ) : (
-                          profile.website
+                      <div className="space-y-3 pt-4 border-t border-gray-700">
+                        {contactEmail && (
+                          <div className="flex items-center gap-3 text-gray-300 text-sm">
+                            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            {contactEmail}
+                          </div>
                         )}
+                        {contactWebsiteUrl && (
+                          <div className="flex items-center gap-3 text-gray-300 text-sm">
+                            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                            {!isPremium && !isSeededUnclaimedActive ? (
+                              <span className="text-gray-500 italic">Website hidden (Pro feature)</span>
+                            ) : (
+                              <a
+                                href={contactWebsiteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => trackContactAction(LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK, 'sidebar_website_text')}
+                                className="hover:text-red-400 transition-colors break-all"
+                              >
+                                {contactWebsiteLabel || contactWebsiteUrl}
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {contactHandle && (
+                          <div className="flex items-center gap-3 text-gray-300 text-sm">
+                            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8a6 6 0 01-12 0 6 6 0 0112 0zm2 12v-1a4 4 0 00-4-4H6a4 4 0 00-4 4v1" /></svg>
+                            {contactHandle}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3 text-gray-300 text-sm">
+                          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          {locationStr}
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-3 text-gray-300 text-sm">
-                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                      {locationStr}
+                    </>
+                  )}
+                </div>
+
+                {/* Affiliate platform links in sidebar */}
+                {platformLinks.length > 0 && (
+                  <div className="mt-8">
+                    <h3 className="text-white font-semibold mb-3">Around the Web</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {platformLinks.map((link) => {
+                        const Element = isPremium ? 'a' : 'span';
+                        const props = isPremium ? {
+                          href: link.url,
+                          target: "_blank",
+                          rel: "noopener noreferrer",
+                          onClick: () => trackLeadEvent({
+                            listingId: listing.id,
+                            eventType: LEAD_EVENT_TYPES.CONTACT_WEBSITE_CLICK,
+                            cityPage: location.city || null,
+                            metadata: { source: 'sidebar_platform_link', platform: link.platformId },
+                          })
+                        } : {};
+
+                        return (
+                          <Element
+                            key={link.platformId}
+                            {...props}
+                            className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${link.badgeColor} ${!isPremium ? 'opacity-50 cursor-default' : ''}`}
+                          >
+                            <span className="text-sm font-medium">{link.label}</span>
+                          </Element>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Verified Badge */}
                 {profile.is_verified && (
@@ -1013,13 +1593,55 @@ export default function ProfileDetail({ listing, similarListings, error: serverE
           </div>
         </div>
 
+        {/* Explore More — service × city internal links for SEO and user navigation */}
+        {(activeServices.length > 0 || citySlug) && (
+          <div className="max-w-7xl mx-auto px-4 pb-8">
+            <div className="border-t border-gray-800 pt-8">
+              <h2 className="text-white font-semibold mb-4 text-lg">
+                Find More in {location.city || 'Your City'}
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {/* City page */}
+                {citySlug && (
+                  <Link
+                    href={`/location/${citySlug}`}
+                    className="px-3 py-1.5 bg-[#1a1a1a] border border-gray-700 rounded text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
+                  >
+                    All dommes in {location.city}
+                  </Link>
+                )}
+                {/* Service × city combo links */}
+                {activeServices.slice(0, 6).map((svc) => (
+                  <Link
+                    key={svc}
+                    href={`/location/${citySlug}/${slugifyService(svc)}`}
+                    className="px-3 py-1.5 bg-red-600/10 border border-red-600/20 rounded text-sm text-red-400 hover:text-red-300 hover:border-red-500/40 transition-colors"
+                  >
+                    {svc} in {location.city}
+                  </Link>
+                ))}
+                {/* Service-only pages */}
+                {activeServices.slice(0, 4).map((svc) => (
+                  <Link
+                    key={`svc-${svc}`}
+                    href={`/services/${slugifyService(svc)}`}
+                    className="px-3 py-1.5 bg-[#1a1a1a] border border-gray-700 rounded text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                  >
+                    All {svc} dommes
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Similar Profiles */}
         {similarListings.length > 0 && (
           <div className="max-w-7xl mx-auto px-4 pb-12">
             <h2 className="text-white text-xl font-semibold mb-4">Similar Dommes in {location.city}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {similarListings.map(l => (
-                <Link key={l.id} href={`/listings/${l.id}`} className="group">
+                <Link key={l.id} href={buildProfilePath(l)} className="group">
                   <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-800">
                     <img
                       src={l.profiles?.profile_picture_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop'}

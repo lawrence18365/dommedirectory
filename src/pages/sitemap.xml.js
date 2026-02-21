@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { slugify } from '../utils/slugify';
+import { buildProfilePath } from '../utils/profileSlug';
+import { ALL_SERVICES, slugifyService } from '../utils/services';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dommedirectory.com';
 
@@ -52,20 +54,45 @@ export async function getServerSideProps({ res }) {
   }
 
   try {
-    const [postsResult, listingsResult, locationsResult] = await Promise.all([
+    const [postsResult, locationsResult] = await Promise.all([
       supabase
         .from('posts')
         .select('slug, updated_at, published_at, created_at')
         .eq('status', 'published'),
       supabase
-        .from('listings')
-        .select('id, updated_at, created_at')
-        .eq('is_active', true),
-      supabase
         .from('locations')
         .select('city, is_active, updated_at, created_at')
         .eq('is_active', true),
     ]);
+
+    let listingsResult = await supabase
+      .from('listings')
+      .select(`
+        id,
+        slug,
+        title,
+        updated_at,
+        created_at,
+        profiles(display_name),
+        locations(city, state)
+      `)
+      .eq('is_active', true);
+
+    if (listingsResult.error?.code === '42703') {
+      listingsResult = await supabase
+        .from('listings')
+        .select(`
+          id,
+          title,
+          updated_at,
+          created_at,
+          profiles(display_name),
+          locations(city, state)
+        `)
+        .eq('is_active', true);
+    }
+
+    if (listingsResult.error) throw listingsResult.error;
 
     const blogEntries = (postsResult.data || []).map((post) => ({
       url: `/blog/${post.slug}`,
@@ -74,7 +101,16 @@ export async function getServerSideProps({ res }) {
       lastmod: toIso(post.updated_at || post.published_at || post.created_at),
     }));
 
+    // Service category pages
+    const serviceEntries = ALL_SERVICES.map((service) => ({
+      url: `/services/${slugifyService(service)}`,
+      priority: '0.8',
+      changefreq: 'daily',
+      lastmod: null,
+    }));
+
     const seenLocationSlugs = new Set();
+    const locationCitySlugs = [];
     const locationEntries = (locationsResult.data || [])
       .map((location) => ({
         slug: slugify(location.city || ''),
@@ -84,6 +120,7 @@ export async function getServerSideProps({ res }) {
       .filter((location) => {
         if (seenLocationSlugs.has(location.slug)) return false;
         seenLocationSlugs.add(location.slug);
+        locationCitySlugs.push(location.slug);
         return true;
       })
       .map((location) => ({
@@ -93,14 +130,24 @@ export async function getServerSideProps({ res }) {
         lastmod: location.lastmod,
       }));
 
+    // Location + service combo pages
+    const comboEntries = locationCitySlugs.flatMap((citySlug) =>
+      ALL_SERVICES.map((service) => ({
+        url: `/location/${citySlug}/${slugifyService(service)}`,
+        priority: '0.7',
+        changefreq: 'weekly',
+        lastmod: null,
+      }))
+    );
+
     const listingEntries = (listingsResult.data || []).map((listing) => ({
-      url: `/listings/${listing.id}`,
+      url: buildProfilePath(listing),
       priority: '0.7',
       changefreq: 'weekly',
       lastmod: toIso(listing.updated_at || listing.created_at),
     }));
 
-    const sitemapEntries = [...staticEntries, ...blogEntries, ...locationEntries, ...listingEntries];
+    const sitemapEntries = [...staticEntries, ...serviceEntries, ...blogEntries, ...locationEntries, ...comboEntries, ...listingEntries];
     const xml = buildSitemap(sitemapEntries);
 
     res.setHeader('Content-Type', 'text/xml; charset=utf-8');

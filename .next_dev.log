@@ -1,0 +1,14 @@
+
+> dommedirectory-new@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.12:3000
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 396ms
+ GET /blog 200 in 1646ms (compile: 804ms, render: 843ms)
+ GET /blog 200 in 204ms (compile: 3ms, render: 201ms)
+[?25h

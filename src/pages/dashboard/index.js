@@ -10,6 +10,7 @@ import { getCurrentUser } from '../../services/auth';
 import { getListingsByProfile, deleteListing } from '../../services/listings';
 import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
 import { supabase } from '../../utils/supabase';
+import { buildProfilePath } from '../../utils/profileSlug';
 
 const CLICK_EVENT_TYPES = new Set([
   'contact_email_click',
@@ -72,6 +73,17 @@ export default function Dashboard() {
     bySource: [],
   });
   const [exportingDays, setExportingDays] = useState(null);
+  const [managingSub, setManagingSub] = useState(false);
+  const [trial, setTrial] = useState({
+    loading: true,
+    eligible: false,
+    requestId: null,
+    listingId: null,
+    listingTitle: null,
+    activating: false,
+    activated: false,
+    error: null,
+  });
 
   useEffect(() => {
     checkAuth();
@@ -80,7 +92,7 @@ export default function Dashboard() {
   const checkAuth = async () => {
     setLoading(true);
     const { user: currentUser, error } = await getCurrentUser();
-    
+
     if (error || !currentUser) {
       router.push('/auth/login');
       return;
@@ -98,8 +110,81 @@ export default function Dashboard() {
       fetchProfile(currentUser.id),
       fetchDashboardData(currentUser.id),
       fetchReferralData(),
+      fetchTrialEligibility(currentUser.id),
     ]);
     setLoading(false);
+  };
+
+  const fetchTrialEligibility = async (userId) => {
+    // Find approved claim requests where the featured trial hasn't been granted yet
+    const { data, error } = await supabase
+      .from('listing_claim_requests')
+      .select('id, listing_id, listings(title)')
+      .eq('profile_id', userId)
+      .eq('status', 'approved')
+      .eq('claim_trial_granted', false)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      setTrial((prev) => ({ ...prev, loading: false, eligible: false }));
+      return;
+    }
+
+    setTrial((prev) => ({
+      ...prev,
+      loading: false,
+      eligible: true,
+      requestId: data.id,
+      listingId: data.listing_id,
+      listingTitle: data.listings?.title || 'your listing',
+    }));
+  };
+
+  const handleManageSubscription = async () => {
+    setManagingSub(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('/api/payments/create-portal-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ returnUrl: window.location.href }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to open billing portal');
+      window.location.href = data.url;
+    } catch (err) {
+      alert(err.message);
+      setManagingSub(false);
+    }
+  };
+
+  const activateTrial = async () => {
+    setTrial((prev) => ({ ...prev, activating: true, error: null }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('No session');
+
+      const resp = await fetch('/api/listings/activate-trial', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ listingId: trial.listingId, requestId: trial.requestId }),
+      });
+      const result = await resp.json();
+
+      if (!resp.ok) throw new Error(result?.error || 'Activation failed');
+
+      setTrial((prev) => ({ ...prev, activating: false, activated: true, eligible: false }));
+    } catch (err) {
+      setTrial((prev) => ({ ...prev, activating: false, error: err.message }));
+    }
   };
 
   const fetchProfile = async (userId) => {
@@ -346,7 +431,7 @@ export default function Dashboard() {
 
   const handleDeleteListing = async (listingId) => {
     if (!confirm('Are you sure you want to delete this listing?')) return;
-    
+
     const { error } = await deleteListing(listingId);
     if (!error) {
       setListings(listings.filter(l => l.id !== listingId));
@@ -383,6 +468,15 @@ export default function Dashboard() {
             <p className="text-gray-400">Here&apos;s what&apos;s happening with your profile</p>
           </div>
           <div className="flex gap-3">
+            {(profile?.premium_tier === 'pro' || profile?.premium_tier === 'elite' || profile?.stripe_customer_id) && (
+              <Button
+                variant="outline"
+                isLoading={managingSub}
+                onClick={handleManageSubscription}
+              >
+                Manage Billing
+              </Button>
+            )}
             <Button variant="secondary" leftIcon={<BarChart3 className="w-4 h-4" />}>
               View Analytics
             </Button>
@@ -391,6 +485,35 @@ export default function Dashboard() {
             </Button>
           </div>
         </div>
+
+        {/* Featured Trial Banner */}
+        {(trial.eligible || trial.activated) && (
+          <div className={`rounded-lg border p-4 flex flex-col sm:flex-row sm:items-center gap-4 ${trial.activated ? 'border-green-700/50 bg-green-900/20' : 'border-yellow-700/50 bg-yellow-900/20'}`}>
+            <div className="flex-1">
+              {trial.activated ? (
+                <>
+                  <p className="text-green-300 font-semibold">7-day featured placement activated!</p>
+                  <p className="text-gray-400 text-sm mt-0.5">Your listing will appear at the top of its city page for the next 7 days.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-yellow-200 font-semibold">You have a free 7-day featured placement waiting</p>
+                  <p className="text-gray-400 text-sm mt-0.5">Claim it for <span className="text-white">{trial.listingTitle}</span> — puts you at the top of your city page.</p>
+                  {trial.error && <p className="text-red-400 text-xs mt-1">{trial.error}</p>}
+                </>
+              )}
+            </div>
+            {trial.eligible && !trial.activated && (
+              <button
+                onClick={activateTrial}
+                disabled={trial.activating}
+                className="shrink-0 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black font-semibold px-5 py-2 rounded transition-colors text-sm"
+              >
+                {trial.activating ? 'Activating...' : 'Activate Now — Free'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Main Stats */}
         <StatsGrid>
@@ -582,8 +705,8 @@ export default function Dashboard() {
           <Card className="lg:col-span-2">
             <CardHeader
               title={stats.listings === 0 ? "Getting Started" : "Performance Overview"}
-              description={stats.listings === 0 
-                ? "Complete these steps to get the most out of your profile" 
+              description={stats.listings === 0
+                ? "Complete these steps to get the most out of your profile"
                 : "Your profile activity over time"}
             />
             <CardContent>
@@ -599,7 +722,7 @@ export default function Dashboard() {
                     </div>
                     <Button size="sm" onClick={() => router.push('/profile')}>Complete</Button>
                   </div>
-                  
+
                   <div className="flex items-center gap-4 p-4 bg-[#1a1a1a] rounded-lg">
                     <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
                       <span className="text-red-600 font-bold">2</span>
@@ -630,15 +753,15 @@ export default function Dashboard() {
                       <p className="text-2xl font-bold text-white">{stats.listings}</p>
                       <p className="text-gray-400 text-sm">Active Listings</p>
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       leftIcon={<Plus className="w-4 h-4" />}
                       onClick={() => router.push('/listings/create')}
                     >
                       New Listing
                     </Button>
                   </div>
-                  
+
                   {/* Listings List */}
                   {listingsLoading ? (
                     <div className="flex justify-center py-8">
@@ -648,8 +771,8 @@ export default function Dashboard() {
                     <div className="text-center py-8 text-gray-400 bg-[#1a1a1a] rounded-lg">
                       <Calendar className="w-10 h-10 mx-auto mb-2 opacity-20" />
                       <p>No listings yet</p>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="secondary"
                         className="mt-3"
                         onClick={() => router.push('/listings/create')}
@@ -660,8 +783,8 @@ export default function Dashboard() {
                   ) : (
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                       {listings.map((listing) => (
-                        <div 
-                          key={listing.id} 
+                        <div
+                          key={listing.id}
                           className="flex items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg group"
                         >
                           <div className="flex-1 min-w-0">
@@ -674,7 +797,7 @@ export default function Dashboard() {
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
-                              onClick={() => router.push(`/listings/${listing.id}`)}
+                              onClick={() => router.push(buildProfilePath(listing))}
                               className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
                               title="View"
                             >
@@ -715,7 +838,7 @@ export default function Dashboard() {
                 <div className="text-4xl font-bold text-white">{profileCompletion}%</div>
                 <p className="text-gray-400 text-sm">Complete</p>
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   {profile?.display_name ? (
@@ -884,14 +1007,14 @@ export default function Dashboard() {
 
 function calculateProfileCompletion(profile) {
   if (!profile) return 0;
-  
+
   let score = 0;
   let total = 4;
-  
+
   if (profile.display_name) score++;
   if (profile.bio) score++;
   if (profile.profile_picture_url) score++;
   if (profile.primary_location_id) score++;
-  
+
   return Math.round((score / total) * 100);
 }

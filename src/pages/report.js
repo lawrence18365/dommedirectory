@@ -100,7 +100,7 @@ export default function Report() {
                 value={formData.profileUrl}
                 onChange={(e) => setFormData({ ...formData, profileUrl: e.target.value })}
                 className="w-full bg-[#1f1f1f] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/50"
-                placeholder="https://dommedirectory.com/listings/..."
+                placeholder="https://dommedirectory.com/profiles/..."
               />
             </div>
             

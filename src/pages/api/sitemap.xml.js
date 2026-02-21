@@ -1,3 +1,3 @@
 export default function handler(req, res) {
-  res.redirect(308, '/sitemap.xml');
+  res.redirect(301, '/sitemap.xml');
 }

@@ -20,13 +20,20 @@ const generateId = (prefix) => {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const VISITOR_ID_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+const VISITOR_ID_EXPIRY_KEY = 'dd_visitor_id_expiry';
+
 const getOrCreateVisitorId = () => {
   if (typeof window === 'undefined') return null;
 
+  const now = Date.now();
+  const expiry = parseInt(window.localStorage.getItem(VISITOR_ID_EXPIRY_KEY) || '0', 10);
   let visitorId = window.localStorage.getItem(VISITOR_ID_KEY);
-  if (!visitorId) {
+
+  if (!visitorId || now > expiry) {
     visitorId = generateId('v');
     window.localStorage.setItem(VISITOR_ID_KEY, visitorId);
+    window.localStorage.setItem(VISITOR_ID_EXPIRY_KEY, String(now + VISITOR_ID_TTL_MS));
   }
 
   return visitorId;
@@ -64,7 +71,13 @@ const getAuthToken = async () => {
 
 export const getUtmContext = () => {
   if (typeof window === 'undefined') {
-    return { utm_source: null, utm_medium: null, utm_campaign: null };
+    return {
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_term: null,
+      utm_content: null,
+    };
   }
 
   const params = new URLSearchParams(window.location.search);
@@ -72,6 +85,8 @@ export const getUtmContext = () => {
     utm_source: params.get('utm_source'),
     utm_medium: params.get('utm_medium'),
     utm_campaign: params.get('utm_campaign'),
+    utm_term: params.get('utm_term'),
+    utm_content: params.get('utm_content'),
   };
 };
 
@@ -100,6 +115,7 @@ export async function trackLeadEvent({
 
     await fetch('/api/leads/track', {
       method: 'POST',
+      keepalive: true,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

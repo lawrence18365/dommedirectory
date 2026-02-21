@@ -5,13 +5,14 @@ import SEO, { generateWebsiteSchema } from '../../components/ui/SEO';
 import { Search, MapPin, TrendingUp, Star, ChevronRight } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../utils/supabase';
 import { slugify } from '../../utils/slugify';
+import { buildProfilePath } from '../../utils/profileSlug';
 
 const getCityImage = (cityName) => {
   return `https://source.unsplash.com/600x400/?city,${encodeURIComponent(cityName)}`;
 };
 
 const services = [
-  'BDSM', 'Bondage', 'Discipline', 'Domination', 'Submission', 
+  'BDSM', 'Bondage', 'Discipline', 'Domination', 'Submission',
   'Fetish', 'Roleplay', 'CBT', 'Spanking', 'Foot Worship'
 ];
 
@@ -35,9 +36,8 @@ export default function USAPage() {
       const { data, error } = await supabase
         .from('listings')
         .select(`
-          id,
-          title,
-          profiles!inner(display_name, profile_picture_url, is_verified),
+          *,
+          profiles!inner(display_name, profile_picture_url, is_verified, premium_tier),
           locations!inner(city, state, country),
           media(storage_path, is_primary)
         `)
@@ -51,14 +51,16 @@ export default function USAPage() {
       if (data) {
         const transformedListings = data.map(listing => ({
           id: listing.id,
+          slug: listing.slug || '',
           display_name: listing.profiles?.display_name || 'Anonymous',
           city: listing.locations?.city,
           state: listing.locations?.state,
-          image: listing.media?.find(m => m.is_primary)?.storage_path || 
-                 listing.media?.[0]?.storage_path || 
-                 listing.profiles?.profile_picture_url ||
-                 null,
+          image: listing.media?.find(m => m.is_primary)?.storage_path ||
+            listing.media?.[0]?.storage_path ||
+            listing.profiles?.profile_picture_url ||
+            null,
           is_verified: listing.profiles?.is_verified,
+          is_pro: listing.profiles?.premium_tier === 'pro' || listing.profiles?.premium_tier === 'elite',
         }));
 
         const cityMap = new Map();
@@ -93,7 +95,7 @@ export default function USAPage() {
 
   return (
     <Layout>
-      <SEO 
+      <SEO
         title="Professional Dommes in USA - BDSM & Fetish Services"
         description="Find verified professional dommes, mistresses, and BDSM providers in major US cities. New York, Los Angeles, Chicago, Miami, Las Vegas & more. Book sessions with experienced dominatrixes."
         canonical="https://dommedirectory.com/usa"
@@ -111,10 +113,10 @@ export default function USAPage() {
               <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-8">
                 Browse verified BDSM, fetish, and domination service providers in major American cities
               </p>
-              
+
               {/* Search */}
               <div className="max-w-md mx-auto">
-                <Link 
+                <Link
                   href="/cities"
                   className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors justify-center"
                 >
@@ -130,7 +132,7 @@ export default function USAPage() {
         <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-wrap justify-center gap-2">
             {services.map(service => (
-              <span 
+              <span
                 key={service}
                 className="px-4 py-2 bg-[#1a1a1a] border border-gray-700 rounded-full text-gray-300 text-sm"
               >
@@ -206,7 +208,7 @@ export default function USAPage() {
               {listings.map((listing) => (
                 <Link
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
+                  href={buildProfilePath(listing)}
                   className="group relative bg-[#1a1a1a] rounded-lg overflow-hidden hover:ring-2 hover:ring-red-600 transition-all"
                 >
                   <div className="aspect-[3/4]">
@@ -220,11 +222,15 @@ export default function USAPage() {
                       <div className="w-full h-full bg-gray-800" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                    {listing.is_verified && (
-                      <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">
+                    {listing.is_pro ? (
+                      <div className="absolute top-2 right-2 bg-gradient-to-r from-yellow-600 to-yellow-500 text-black font-bold text-xs px-2 py-0.5 rounded shadow-lg border border-yellow-400">
+                        PRO
+                      </div>
+                    ) : listing.is_verified ? (
+                      <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded shadow">
                         Verified
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   <div className="absolute bottom-0 left-0 right-0 p-3">
                     <h3 className="text-white font-semibold text-sm">{listing.display_name}</h3>
@@ -305,14 +311,14 @@ export default function USAPage() {
               Find Professional BDSM & Fetish Services in the USA
             </h2>
             <p className="text-gray-400 mb-4">
-              DommeDirectory is the premier platform for connecting with professional dominatrixes, 
-              mistresses, and BDSM service providers across the United States. Whether you&apos;re looking 
-              for sessions in New York, Los Angeles, Chicago, or any major US city, our verified directory 
+              DommeDirectory is the premier platform for connecting with professional dominatrixes,
+              mistresses, and BDSM service providers across the United States. Whether you&apos;re looking
+              for sessions in New York, Los Angeles, Chicago, or any major US city, our verified directory
               makes it easy to find experienced providers who match your interests.
             </p>
             <p className="text-gray-400 mb-4">
-              Browse our extensive listings featuring detailed profiles, service descriptions, rates, 
-              and authentic photos. All providers are verified to ensure a safe, professional experience. 
+              Browse our extensive listings featuring detailed profiles, service descriptions, rates,
+              and authentic photos. All providers are verified to ensure a safe, professional experience.
               From bondage and discipline to roleplay and fetish services, find exactly what you&apos;re looking for.
             </p>
             <h3 className="text-xl font-semibold text-white mt-8 mb-4">

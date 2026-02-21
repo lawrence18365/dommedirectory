@@ -1,0 +1,50 @@
+name: Build Outreach Queues
+
+on:
+  schedule:
+    # Sunday at 23:00 UTC — re-classify pending contacts before the week starts
+    - cron: '0 23 * * 0'
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'City slug to re-classify (blank = all cities)'
+        required: false
+      limit:
+        description: 'Max contacts to classify per run'
+        required: false
+        default: '100'
+
+concurrency:
+  group: build-outreach-queues
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-queues:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CLASSIFY_CITY: ${{ github.event.inputs.city || '' }}
+      CLASSIFY_LIMIT: ${{ github.event.inputs.limit || '100' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 supabase
+
+      - name: Classify uncontacted providers
+        run: python scripts/outreach/build_delivery_queues_db.py

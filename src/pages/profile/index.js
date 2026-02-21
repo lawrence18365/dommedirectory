@@ -11,7 +11,7 @@ const ProfilePage = () => {
   const router = useRouter();
   const user = useUser();
   const fileInputRef = useRef(null);
-  
+
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -19,7 +19,7 @@ const ProfilePage = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     display_name: '',
@@ -69,9 +69,9 @@ const ProfilePage = () => {
     setSaving(true);
     setError(null);
     setSuccessMessage('');
-    
+
     const { error: updateError } = await updateProfile(user.id, formData);
-    
+
     if (updateError) {
       setError('Failed to save profile. Please try again.');
     } else {
@@ -101,9 +101,9 @@ const ProfilePage = () => {
 
     setUploadingImage(true);
     setError(null);
-    
+
     const { url, error: uploadError } = await updateProfilePicture(user.id, file);
-    
+
     if (uploadError) {
       setError('Failed to upload image. Please try again.');
     } else {
@@ -150,7 +150,7 @@ const ProfilePage = () => {
             <span className="text-green-200">{successMessage}</span>
           </div>
         )}
-        
+
         {error && (
           <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg">
             <span className="text-red-200">{error}</span>
@@ -170,8 +170,8 @@ const ProfilePage = () => {
               <div className="relative">
                 <div className="w-24 h-24 rounded-xl bg-[#262626] border-4 border-[#1a1a1a] overflow-hidden flex items-center justify-center">
                   {profile?.profile_picture_url ? (
-                    <img 
-                      src={profile.profile_picture_url} 
+                    <img
+                      src={profile.profile_picture_url}
                       alt={profile.display_name}
                       className="w-full h-full object-cover"
                     />
@@ -179,7 +179,7 @@ const ProfilePage = () => {
                     <User className="w-12 h-12 text-gray-600" />
                   )}
                 </div>
-                
+
                 {/* Upload Button */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -192,7 +192,7 @@ const ProfilePage = () => {
                     <Camera className="w-4 h-4" />
                   )}
                 </button>
-                
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -348,9 +348,9 @@ const ProfilePage = () => {
                       placeholder="https://yourwebsite.com"
                     />
                   ) : (
-                    <a 
-                      href={profile?.website} 
-                      target="_blank" 
+                    <a
+                      href={profile?.website}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-red-600 hover:text-red-500"
                     >
@@ -386,29 +386,38 @@ const ProfilePage = () => {
         </div>
 
         {/* Quick Links */}
-        <div className="mt-6 grid sm:grid-cols-3 gap-4">
-          <Link 
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Link
             href="/dashboard"
             className="bg-[#1a1a1a] border border-gray-800 rounded-lg p-4 hover:border-red-600/50 transition-colors"
           >
             <h3 className="text-white font-medium mb-1">Dashboard</h3>
             <p className="text-gray-400 text-sm">View your stats and activity</p>
           </Link>
-          
-          <Link 
+
+          <Link
             href="/listings/create"
             className="bg-[#1a1a1a] border border-gray-800 rounded-lg p-4 hover:border-red-600/50 transition-colors"
           >
             <h3 className="text-white font-medium mb-1">Create Listing</h3>
             <p className="text-gray-400 text-sm">Add a new service listing</p>
           </Link>
-          
-          <Link 
+
+          <Link
             href="/verification"
             className="bg-[#1a1a1a] border border-gray-800 rounded-lg p-4 hover:border-red-600/50 transition-colors"
           >
             <h3 className="text-white font-medium mb-1">Get Verified</h3>
             <p className="text-gray-400 text-sm">Build trust with clients</p>
+          </Link>
+
+          <Link
+            href="/pricing"
+            className="bg-gradient-to-br from-red-900/40 to-[#1a1a1a] border border-red-500/50 rounded-lg p-4 hover:border-red-500 transition-colors group relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-16 h-16 bg-red-600/20 rounded-full blur-xl group-hover:bg-red-600/30 transition-colors" />
+            <h3 className="text-red-400 font-bold mb-1 relative z-10">Upgrade to Pro</h3>
+            <p className="text-gray-400 text-sm relative z-10">Rank higher in searches</p>
           </Link>
         </div>
       </div>

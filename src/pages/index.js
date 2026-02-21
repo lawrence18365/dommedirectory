@@ -4,17 +4,21 @@ import Layout from '../components/layout/Layout';
 import SEO, { generateWebsiteSchema, generateOrganizationSchema } from '../components/ui/SEO';
 import { Search, MapPin, Video, Star, Heart } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { buildProfilePath } from '../utils/profileSlug';
 
 function mapListingsForHomepage(listings = []) {
   return listings.map((listing) => {
     const primaryMedia = listing.media?.find((m) => m.is_primary) || listing.media?.[0];
     return {
       id: listing.id,
+      slug: listing.slug || '',
       display_name: listing.profiles?.display_name || 'Anonymous',
       city: listing.locations?.city || 'Unknown',
+      state: listing.locations?.state || '',
       country: listing.locations?.country || '',
       profile_picture_url: primaryMedia?.storage_path || listing.profiles?.profile_picture_url || null,
       is_verified: Boolean(listing.profiles?.is_verified),
+      is_pro: listing.profiles?.premium_tier === 'pro' || listing.profiles?.premium_tier === 'elite',
       title: listing.title || '',
       description: listing.description || '',
     };
@@ -55,11 +59,10 @@ export async function getServerSideProps() {
       supabase
         .from('listings')
         .select(`
-          id,
-          title,
-          description,
-          profiles!inner(id, display_name, profile_picture_url, is_verified),
-          locations!inner(city, country),
+          *,
+          *,
+          profiles!inner(id, display_name, profile_picture_url, is_verified, premium_tier),
+          locations!inner(city, state, country),
           media(storage_path, is_primary)
         `)
         .eq('is_active', true)
@@ -108,18 +111,29 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
 
   return (
     <Layout>
-      <SEO 
-        title="Find Professional Dommes in USA & Canada"
-        description="Browse verified professional dommes and mistresses in major US cities. Find BDSM, fetish, and domination services near you. New York, Los Angeles, Chicago, Miami & more."
+      <SEO
+        title="Find a Dominatrix Near You — Verified Listings | DommeDirectory"
+        description="Browse verified professional dominatrices and mistresses across the US and Canada. Search by city: Toronto, New York, Los Angeles, London & more. Direct contact, real profiles."
         canonical="https://dommedirectory.com"
         jsonLd={[generateWebsiteSchema(), generateOrganizationSchema()]}
       />
 
-      <h1 className="sr-only">Find Professional Dommes in Major US Cities</h1>
-      
       {/* Dark Background */}
       <div className="min-h-screen bg-[#0a0a0a]">
-        
+
+        {/* Above-the-fold H1 — visible, high-authority, keyword-bearing */}
+        <div className="bg-[#0d0d0d] border-b border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 pt-6 pb-4 sm:px-6 lg:px-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+              Find Verified Dominatrices Near You
+            </h1>
+            <p className="text-gray-400 mt-1 text-sm">
+              Professional dommes and mistresses in major cities across the US and Canada.
+              Verified profiles. Direct contact.
+            </p>
+          </div>
+        </div>
+
         {/* Search Bar Section */}
         <div className="bg-[#111] border-b border-gray-800">
           <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
@@ -146,7 +160,7 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
         {/* Main Content */}
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row gap-6">
-            
+
             {/* Left Column - Profile Grid */}
             <div className="flex-1">
               {/* Section Header */}
@@ -169,7 +183,7 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
                   {dommes.map((domme) => (
                     <Link
                       key={domme.id}
-                      href={`/listings/${domme.id}`}
+                      href={buildProfilePath(domme)}
                       className="group relative bg-[#1a1a1a] rounded-lg overflow-hidden hover:ring-2 hover:ring-red-600 transition-all"
                     >
                       {/* Image */}
@@ -186,13 +200,17 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
                         {/* Gradient Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                        {/* Verified Badge */}
-                        {domme.is_verified && (
-                          <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">
+                        {/* Verified/Pro Badge */}
+                        {domme.is_pro ? (
+                          <div className="absolute top-2 right-2 bg-gradient-to-r from-yellow-600 to-yellow-500 text-black font-bold text-xs px-2 py-0.5 rounded shadow-lg border border-yellow-400">
+                            PRO
+                          </div>
+                        ) : domme.is_verified ? (
+                          <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded shadow">
                             Verified
                           </div>
-                        )}
-                        
+                        ) : null}
+
                         {/* Info Overlay */}
                         <div className="absolute bottom-0 left-0 right-0 p-3">
                           <h3 className="text-white font-semibold text-sm truncate">
@@ -211,7 +229,7 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
 
             {/* Right Sidebar */}
             <div className="w-full lg:w-80 space-y-6">
-              
+
               {/* Featured Listing */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -223,7 +241,7 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
 
                 {featuredListing ? (
                   <Link
-                    href={`/listings/${featuredListing.id}`}
+                    href={buildProfilePath(featuredListing)}
                     className="block relative rounded-lg overflow-hidden group"
                   >
                     <div className="aspect-[3/4]">
@@ -333,8 +351,77 @@ export default function Home({ initialDommes, initialPopularCities, fetchError }
           </div>
         </div>
 
+        {/* Services Section — internal links for SEO and user navigation */}
+        <div className="border-t border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8">
+            <h2 className="text-white font-semibold mb-5 text-lg">Browse by Service</h2>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: 'Domination', href: '/services/domination' },
+                { label: 'Financial Domination', href: '/services/financial-domination' },
+                { label: 'CBT', href: '/services/cbt' },
+                { label: 'Bondage', href: '/services/bondage' },
+                { label: 'Humiliation', href: '/services/humiliation' },
+                { label: 'Role Play', href: '/services/role-play' },
+                { label: 'Impact Play', href: '/services/impact-play' },
+                { label: 'Foot Worship', href: '/services/foot-worship' },
+                { label: 'Pegging', href: '/services/pegging' },
+                { label: 'Chastity', href: '/services/chastity' },
+              ].map(({ label, href }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="px-3 py-1.5 bg-[#1a1a1a] border border-gray-700 rounded text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Guides Section — top-of-funnel content for new clients */}
+        <div className="border-t border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8">
+            <h2 className="text-white font-semibold mb-5 text-lg">New Here? Start With These</h2>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                {
+                  title: 'How to Find a Dominatrix',
+                  desc: 'Where to look, what to say, what to expect.',
+                  href: '/guide/how-to-find-a-dominatrix',
+                },
+                {
+                  title: 'Your First Session',
+                  desc: 'What happens before, during, and after.',
+                  href: '/guide/what-to-expect-first-session',
+                },
+                {
+                  title: 'BDSM Safety',
+                  desc: 'Safewords, negotiation, and aftercare basics.',
+                  href: '/guide/bdsm-safety',
+                },
+                {
+                  title: 'What Is Findom?',
+                  desc: 'Financial domination explained for newcomers.',
+                  href: '/guide/what-is-financial-domination',
+                },
+              ].map(({ title, desc, href }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="block bg-[#111] border border-gray-800 rounded-lg p-4 hover:border-red-600/40 hover:bg-[#151515] transition-colors group"
+                >
+                  <p className="text-white text-sm font-medium group-hover:text-red-400 transition-colors mb-1">{title}</p>
+                  <p className="text-gray-500 text-xs">{desc}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Features Section */}
-        <div className="border-t border-gray-800 mt-12">
+        <div className="border-t border-gray-800 mt-0">
           <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
             <div className="grid md:grid-cols-3 gap-8 text-center">
               <div>
