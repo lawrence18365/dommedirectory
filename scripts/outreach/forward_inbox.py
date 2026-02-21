@@ -76,6 +76,20 @@ def main() -> None:
                 imap.store(msg_id, '+FLAGS', '(\\Seen)')
                 continue
 
+            # Only forward replies from external senders — skip our own
+            # outgoing mail, auto-replies, bounces, and mailer-daemon.
+            from_lower = from_hdr.lower()
+            if 'dommedirectory.com' in from_lower:
+                imap.store(msg_id, '+FLAGS', '(\\Seen)')
+                continue
+            if any(skip in from_lower for skip in ('mailer-daemon', 'postmaster', 'noreply', 'no-reply')):
+                imap.store(msg_id, '+FLAGS', '(\\Seen)')
+                continue
+            auto = str(original.get('Auto-Submitted', '')).lower()
+            if auto and auto != 'no':
+                imap.store(msg_id, '+FLAGS', '(\\Seen)')
+                continue
+
             fwd = EmailMessage()
             fwd['From'] = f'{sender_name} <{reply_to}>'
             fwd['To'] = forward_to
