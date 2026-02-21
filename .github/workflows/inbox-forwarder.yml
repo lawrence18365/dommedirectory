@@ -1,0 +1,37 @@
+name: Inbox Forwarder
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:
+
+concurrency:
+  group: inbox-forwarder
+  cancel-in-progress: false
+
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+
+    env:
+      OUTREACH_REPLY_TO_EMAIL: ${{ secrets.OUTREACH_REPLY_TO_EMAIL }}
+      OUTREACH_FORWARD_TO_EMAIL: ${{ secrets.OUTREACH_FORWARD_TO_EMAIL }}
+      OUTREACH_SENDER_NAME: ${{ secrets.OUTREACH_SENDER_NAME }}
+      OUTREACH_IMAP_HOST: ${{ secrets.OUTREACH_IMAP_HOST }}
+      OUTREACH_IMAP_PORT: ${{ secrets.OUTREACH_IMAP_PORT }}
+      OUTREACH_IMAP_USERNAME: ${{ secrets.OUTREACH_IMAP_USERNAME }}
+      OUTREACH_IMAP_PASSWORD: ${{ secrets.OUTREACH_IMAP_PASSWORD }}
+      OUTREACH_SMTP_HOST: ${{ secrets.OUTREACH_SMTP_HOST }}
+      OUTREACH_SMTP_PORT: ${{ secrets.OUTREACH_SMTP_PORT }}
+      OUTREACH_SMTP_USERNAME: ${{ secrets.OUTREACH_SMTP_USERNAME }}
+      OUTREACH_SMTP_PASSWORD: ${{ secrets.OUTREACH_SMTP_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - run: python scripts/outreach/forward_inbox.py

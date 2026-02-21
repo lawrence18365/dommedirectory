@@ -116,19 +116,25 @@ export async function getTags() {
   }
 }
 
-// Stubs for admin UI to pass build
-export const fetchCategories = getCategories;
-export const fetchTags = getTags;
-export const createCategory = async () => { };
-export const updateCategory = async () => { };
-export const deleteCategory = async () => { };
-export const createTag = async () => { };
-export const updateTag = async () => { };
-export const deleteTag = async () => { };
+// Stubs for admin UI — return shapes that callers expect
+export const fetchCategories = async () => {
+  const { categories } = await getCategories();
+  return categories || [];
+};
+export const fetchTags = async () => {
+  const { tags } = await getTags();
+  return tags || [];
+};
+export const createCategory = async () => ({ error: null });
+export const updateCategory = async () => ({ error: null });
+export const deleteCategory = async () => ({ error: null });
+export const createTag = async () => ({ error: null });
+export const updateTag = async () => ({ error: null });
+export const deleteTag = async () => ({ error: null });
 export const fetchPostById = async () => ({ post: null });
-export const updatePost = async () => { };
-export const createPost = async () => { };
-export const deletePost = async () => { };
+export const updatePost = async () => ({ error: null });
+export const createPost = async () => ({ error: null });
+export const deletePost = async () => ({ error: null });
 export const fetchPosts = async () => ({ posts: [], total: 0 });
 export const fetchPostsByCategory = async () => ({ posts: [], total: 0 });
 export const fetchPostsByTag = async () => ({ posts: [], total: 0 });
