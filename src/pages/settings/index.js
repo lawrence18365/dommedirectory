@@ -6,6 +6,7 @@ import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import Layout from '../../components/layout/Layout';
 import { useProfile } from '../../context/ProfileContext';
 import { updateProfile } from '../../services/profiles';
+import { sanitizeString } from '../../utils/validation';
 import { MARKETING_CONSENT_TEXT } from '../../utils/constants';
 
 export default function SettingsPage() {
@@ -71,8 +72,8 @@ export default function SettingsPage() {
     setMessage({ type: '', text: '' });
 
     const { error } = await updateProfile(user.id, {
-      display_name: formData.display_name,
-      bio: formData.bio,
+      display_name: sanitizeString(formData.display_name, 100),
+      bio: sanitizeString(formData.bio, 5000),
       response_time_hours: formData.response_time_hours ? Number(formData.response_time_hours) : null,
       contact_email: formData.contact_email,
       contact_phone: formData.contact_phone,
@@ -157,10 +158,14 @@ export default function SettingsPage() {
                   name="bio"
                   value={formData.bio}
                   onChange={handleChange}
-                  rows={4}
+                  rows={6}
+                  maxLength={5000}
                   placeholder="Tell people about yourself..."
-                  className="w-full bg-[#262626] text-white rounded py-2.5 px-4 border border-white/10 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors placeholder-gray-500 resize-none"
+                  className="w-full bg-[#262626] text-white rounded py-2.5 px-4 border border-white/10 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors placeholder-gray-500 resize-y"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  {(formData.bio || '').length} / 5000 characters
+                </p>
               </div>
 
               <div>
