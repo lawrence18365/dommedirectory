@@ -261,14 +261,17 @@ const ProfilePage = () => {
                   Bio
                 </label>
                 {isEditing ? (
+                  <>
                   <textarea
                     name="bio"
                     value={formData.bio}
                     onChange={handleInputChange}
-                    rows={4}
-                    className="w-full bg-[#262626] text-white rounded-lg py-3 px-4 border border-gray-700 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors resize-none"
+                    rows={8}
+                    className="w-full bg-[#262626] text-white rounded-lg py-3 px-4 border border-gray-700 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-colors resize-y"
                     placeholder="Tell clients about yourself, your experience, and what you offer..."
                   />
+                  <p className="mt-1 text-xs text-gray-500">{(formData.bio || '').length} characters</p>
+                  </>
                 ) : (
                   <p className="text-gray-300 whitespace-pre-wrap bg-[#262626] p-4 rounded-lg border border-gray-700">
                     {profile?.bio || 'No bio added yet.'}

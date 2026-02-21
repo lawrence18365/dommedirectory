@@ -198,7 +198,7 @@ export default function Onboarding() {
     setLoading(true);
 
     try {
-      const sanitizedBio = sanitizeString(profileData.bio || '', 5000);
+      const sanitizedBio = sanitizeString(profileData.bio || '', 50000);
       const marketingOptIn = Boolean(profileData.marketing_opt_in);
       const marketingOptInAt = marketingOptIn
         ? new Date().toISOString()
@@ -567,12 +567,11 @@ export default function Onboarding() {
                   value={profileData.bio}
                   onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
                   placeholder="Tell clients about yourself, your experience, and your style..."
-                  rows={6}
-                  maxLength={5000}
+                  rows={8}
                   className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 resize-y"
                 />
                 <p className={`mt-2 text-xs ${profileData.bio.trim().length >= MIN_PROFILE_BIO_LENGTH ? 'text-green-400' : 'text-gray-500'}`}>
-                  {profileData.bio.trim().length} / 5000 characters — minimum {MIN_PROFILE_BIO_LENGTH} for ranking
+                  {profileData.bio.trim().length} characters — minimum {MIN_PROFILE_BIO_LENGTH} for ranking
                 </p>
               </div>
 
