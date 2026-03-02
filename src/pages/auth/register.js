@@ -139,7 +139,7 @@ const RegisterPage = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength="6"
+              minLength="8"
               className="appearance-none border border-white/10 rounded w-full py-2 px-3 text-white bg-[#262626] mb-3 leading-tight focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500 placeholder-gray-500"
               placeholder="******************"
             />
@@ -195,11 +195,14 @@ const RegisterPage = () => {
               </div>
               <h3 className="text-green-400 font-semibold mb-1">Account Created!</h3>
               <p className="text-green-200/80 text-sm mb-3">
-                Check your email <strong>{email}</strong> to confirm your account.
+                Check your email <strong>{email}</strong> and click the confirmation link to activate your account.
               </p>
-              <p className="text-gray-400 text-xs">
-                After confirming, <Link href="/auth/login" className="text-green-400 hover:underline">log in here</Link> and you&apos;ll continue onboarding.
+              <p className="text-gray-400 text-xs mb-3">
+                Once confirmed, you&apos;ll be automatically signed in and taken to set up your profile.
               </p>
+              <Link href="/auth/login" className="text-sm text-red-500 hover:text-red-400 font-medium">
+                Go to Login
+              </Link>
             </div>
           )}
 
@@ -211,6 +214,12 @@ const RegisterPage = () => {
             >
               {loading ? 'Creating Account...' : (success ? 'Account Created' : 'Sign Up')}
             </button>
+          </div>
+          <div className="text-center mt-4">
+            <span className="text-sm text-gray-400">Already have an account? </span>
+            <Link href="/auth/login" className="font-bold text-sm text-red-500 hover:text-red-400">
+              Login
+            </Link>
           </div>
         </form>
       </div>

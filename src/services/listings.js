@@ -12,21 +12,30 @@ export const createListing = async (profileId, listingData) => {
       return { listing: null, error: new Error('Supabase is not configured') };
     }
 
+    const row = {
+      profile_id: profileId,
+      location_id: listingData.locationId,
+      title: listingData.title,
+      description: listingData.description,
+      services: listingData.services || {},
+      rates: listingData.rates || {},
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    // Strategic structured fields (all optional)
+    if (listingData.session_formats) row.session_formats = listingData.session_formats;
+    if (listingData.session_durations) row.session_durations = listingData.session_durations;
+    if (listingData.accepts_beginners != null) row.accepts_beginners = listingData.accepts_beginners;
+    if (listingData.deposit_required != null) row.deposit_required = listingData.deposit_required;
+    if (listingData.deposit_amount) row.deposit_amount = listingData.deposit_amount;
+    if (listingData.minimum_notice) row.minimum_notice = listingData.minimum_notice;
+    if (listingData.space_type) row.space_type = listingData.space_type;
+
     const { data, error } = await supabase
       .from('listings')
-      .insert([
-        {
-          profile_id: profileId,
-          location_id: listingData.locationId,
-          title: listingData.title,
-          description: listingData.description,
-          services: listingData.services || {},
-          rates: listingData.rates || {},
-          is_active: true,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }
-      ])
+      .insert([row])
       .select();
 
     if (error) throw error;
@@ -77,16 +86,27 @@ export const updateListing = async (listingId, listingData) => {
       return { error: new Error('Supabase is not configured') };
     }
 
+    const updates = {
+      location_id: listingData.locationId,
+      title: listingData.title,
+      description: listingData.description,
+      services: listingData.services || {},
+      rates: listingData.rates || {},
+      updated_at: new Date(),
+    };
+
+    // Strategic structured fields (all optional)
+    if (Object.prototype.hasOwnProperty.call(listingData, 'session_formats')) updates.session_formats = listingData.session_formats;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'session_durations')) updates.session_durations = listingData.session_durations;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'accepts_beginners')) updates.accepts_beginners = listingData.accepts_beginners;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'deposit_required')) updates.deposit_required = listingData.deposit_required;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'deposit_amount')) updates.deposit_amount = listingData.deposit_amount;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'minimum_notice')) updates.minimum_notice = listingData.minimum_notice;
+    if (Object.prototype.hasOwnProperty.call(listingData, 'space_type')) updates.space_type = listingData.space_type;
+
     const { error } = await supabase
       .from('listings')
-      .update({
-        location_id: listingData.locationId,
-        title: listingData.title,
-        description: listingData.description,
-        services: listingData.services || {},
-        rates: listingData.rates || {},
-        updated_at: new Date(),
-      })
+      .update(updates)
       .eq('id', listingId);
 
     if (error) throw error;

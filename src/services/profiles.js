@@ -121,6 +121,22 @@ export const updateProfile = async (profileId, profileData) => {
       updatePayload.last_active_at = profileData.last_active_at || null;
     }
 
+    if (Object.prototype.hasOwnProperty.call(profileData, 'experience_years')) {
+      updatePayload.experience_years = profileData.experience_years;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'languages')) {
+      updatePayload.languages = profileData.languages || [];
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'booking_link')) {
+      updatePayload.booking_link = profileData.booking_link;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(profileData, 'completeness_score')) {
+      updatePayload.completeness_score = profileData.completeness_score;
+    }
+
     const { error } = await supabase
       .from('profiles')
       .upsert(updatePayload, { onConflict: 'id' });
