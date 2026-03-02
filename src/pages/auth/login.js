@@ -171,12 +171,9 @@ const LoginPage = () => {
             >
               {resetLoading ? 'Sending...' : 'Forgot password?'}
             </button>
-            <span className="text-sm text-gray-400">
-              Don&apos;t have an account?{' '}
-              <Link href="/auth/register" className="font-bold text-red-500 hover:text-red-400">
-                Sign Up
-              </Link>
-            </span>
+            <Link href="/auth/register" className="text-sm text-gray-400 hover:text-gray-300 transition-colors">
+              Don&apos;t have an account? <span className="font-bold text-red-500 hover:text-red-400">Sign Up</span>
+            </Link>
           </div>
         </form>
       </div>
