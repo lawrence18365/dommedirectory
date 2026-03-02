@@ -138,8 +138,8 @@ export function validatePassword(password) {
     result.errors.push('Password must contain at least one number');
   }
   
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    result.errors.push('Password must contain at least one special character');
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    result.errors.push('Password must contain at least one special character (e.g. !@#$%&*-_)');
   }
   
   result.isValid = result.errors.length === 0;

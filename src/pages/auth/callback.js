@@ -242,7 +242,7 @@ export default function AuthCallback() {
                 )}
 
                 <p className="text-xs text-gray-500">
-                  Use at least 8 characters with uppercase, lowercase, number, and special character.
+                  Use at least 8 characters with uppercase, lowercase, number, and a special character (e.g. !@#$%&*-_).
                 </p>
 
                 <button

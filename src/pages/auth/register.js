@@ -81,7 +81,16 @@ const RegisterPage = () => {
     );
 
     if (signUpError) {
-      setError(signUpError.message || 'Failed to sign up. Please check your details and try again.');
+      const msg = signUpError.message || '';
+      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered')) {
+        setError('An account with this email already exists. Try logging in instead.');
+      } else if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('too many')) {
+        setError('Too many signup attempts. Please wait a few minutes and try again.');
+      } else if (msg.toLowerCase().includes('invalid') && msg.toLowerCase().includes('email')) {
+        setError('This email address was rejected by our server. Please use a different email.');
+      } else {
+        setError(msg || 'Failed to sign up. Please check your details and try again.');
+      }
       console.error('Sign up error:', signUpError);
       setLoading(false);
     } else if (data?.user && !data?.session) {
@@ -143,7 +152,7 @@ const RegisterPage = () => {
               className="appearance-none border border-white/10 rounded w-full py-2 px-3 text-white bg-[#262626] mb-3 leading-tight focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500 placeholder-gray-500"
               placeholder="******************"
             />
-            <p className="text-xs text-gray-400">Minimum 8 characters with uppercase, lowercase, number, and special character.</p>
+            <p className="text-xs text-gray-400">Minimum 8 characters with uppercase, lowercase, number, and a special character (e.g. !@#$%&*-_).</p>
           </div>
           <div>
             <label htmlFor="location" className="block text-gray-300 text-sm font-bold mb-2">
