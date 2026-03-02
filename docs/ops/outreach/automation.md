@@ -3,14 +3,16 @@
 ## Single Source Of Truth
 - `OUTREACH_REPLY_TO_EMAIL` is the only sender/reply address used by outreach scripts.
 - Current configured inbox: `hello@dommedirectory.com`.
+- Outreach templates are consent-first: no profile is represented as live/public until explicit approval.
 
 ## Cron Jobs (local machine)
 - `ddirectory_forward_inbox`: every 10 minutes
   - Forwards unseen inbox emails to `OUTREACH_FORWARD_TO_EMAIL`.
+  - Auto-classifies reply intent (`replied`/`opted_out`) when sender matches `seed_contact_email`.
 - `ddirectory_build_queues`: daily at 10:05
   - Rebuilds delivery queues from tracker rows still marked `not_contacted`.
 - `ddirectory_daily_outreach`: daily at 10:20
-  - Runs low-volume outreach using `OUTREACH_DAILY_LIMIT` (default `8`).
+  - Runs automated outreach using `OUTREACH_DAILY_LIMIT` (default `20`).
 
 ## Status Taxonomy
 - `delivered_form`
@@ -21,6 +23,8 @@
 - `dm_sent`
 - `needs_manual`
 - `not_contacted`
+- `replied`
+- `opted_out`
 
 ## Delivery Audit Fields
 - `delivery_evidence`
@@ -35,4 +39,5 @@
 
 ## Notes
 - Keep outreach volume low until mailbox/domain reputation stabilizes.
+- Outbound runs de-duplicate by target email/website within a run to avoid duplicate sends.
 - Rotate mailbox credentials after any accidental exposure.

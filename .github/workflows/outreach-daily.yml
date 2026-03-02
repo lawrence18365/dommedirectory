@@ -6,10 +6,18 @@ on:
     - cron: '0 15 * * 1-5'
   workflow_dispatch:
     inputs:
-      daily_limit:
-        description: 'Max messages to send (default: 8)'
+      classify_limit:
+        description: 'Max uncontacted rows to classify before outreach (default: 250)'
         required: false
-        default: '8'
+        default: '250'
+      daily_limit:
+        description: 'Max new outreach messages to send (default: 20)'
+        required: false
+        default: '20'
+      followup_daily_limit:
+        description: 'Max follow-up emails to send (default: 20)'
+        required: false
+        default: '20'
       city:
         description: 'City slug (e.g. toronto, london). Leave blank for all.'
         required: false
@@ -36,8 +44,11 @@ jobs:
       OUTREACH_SMTP_PASSWORD: ${{ secrets.OUTREACH_SMTP_PASSWORD }}
       OUTREACH_SMTP_HOST: ${{ secrets.OUTREACH_SMTP_HOST }}
       OUTREACH_SMTP_PORT: ${{ secrets.OUTREACH_SMTP_PORT }}
-      OUTREACH_DAILY_LIMIT: ${{ github.event.inputs.daily_limit || '8' }}
+      OUTREACH_DAILY_LIMIT: ${{ github.event.inputs.daily_limit || '20' }}
+      FOLLOWUP_DAILY_LIMIT: ${{ github.event.inputs.followup_daily_limit || '20' }}
       OUTREACH_CITY: ${{ github.event.inputs.city || '' }}
+      CLASSIFY_CITY: ${{ github.event.inputs.city || '' }}
+      CLASSIFY_LIMIT: ${{ github.event.inputs.classify_limit || '250' }}
 
     steps:
       - name: Checkout
@@ -52,6 +63,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r scripts/outreach/requirements.txt
+
+      - name: Build outreach delivery queues
+        run: python scripts/outreach/build_delivery_queues_db.py
 
       - name: Run daily outreach
         run: python scripts/outreach/daily_outreach_db.py

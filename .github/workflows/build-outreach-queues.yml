@@ -2,8 +2,8 @@ name: Build Outreach Queues
 
 on:
   schedule:
-    # Sunday at 23:00 UTC — re-classify pending contacts before the week starts
-    - cron: '0 23 * * 0'
+    # Weekdays at 14:30 UTC to keep the delivery queue fresh.
+    - cron: '30 14 * * 1-5'
   workflow_dispatch:
     inputs:
       city:
@@ -12,7 +12,7 @@ on:
       limit:
         description: 'Max contacts to classify per run'
         required: false
-        default: '100'
+        default: '250'
 
 concurrency:
   group: build-outreach-queues
@@ -31,7 +31,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       CLASSIFY_CITY: ${{ github.event.inputs.city || '' }}
-      CLASSIFY_LIMIT: ${{ github.event.inputs.limit || '100' }}
+      CLASSIFY_LIMIT: ${{ github.event.inputs.limit || '250' }}
 
     steps:
       - name: Checkout

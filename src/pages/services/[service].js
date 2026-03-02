@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
-import SEO, { generateBreadcrumbSchema } from '../../components/ui/SEO';
+import SEO, { generateBreadcrumbSchema, generateFAQSchema } from '../../components/ui/SEO';
 import { supabase, isSupabaseConfigured } from '../../utils/supabase';
 import { ALL_SERVICES, SERVICE_BY_SLUG, slugifyService } from '../../utils/services';
 import { buildProfilePath } from '../../utils/profileSlug';
+import { getServiceDescription } from '../../data/serviceDescriptions';
 
 export async function getServerSideProps(context) {
   const { service: serviceSlug } = context.params;
@@ -15,7 +16,7 @@ export async function getServerSideProps(context) {
 
   if (!isSupabaseConfigured) {
     return {
-      props: { serviceName, serviceSlug, listings: [], locationMap: {} },
+      props: { serviceName, serviceSlug, listings: [], locationMap: {}, serviceDesc: getServiceDescription(serviceSlug) },
     };
   }
 
@@ -35,7 +36,7 @@ export async function getServerSideProps(context) {
   if (error) {
     console.error('Service page query error:', error);
     return {
-      props: { serviceName, serviceSlug, listings: [], locationMap: {} },
+      props: { serviceName, serviceSlug, listings: [], locationMap: {}, serviceDesc: getServiceDescription(serviceSlug) },
     };
   }
 
@@ -55,17 +56,20 @@ export async function getServerSideProps(context) {
     return acc;
   }, {});
 
+  const serviceDesc = getServiceDescription(serviceSlug);
+
   return {
     props: {
       serviceName,
       serviceSlug,
       listings,
       locationMap,
+      serviceDesc,
     },
   };
 }
 
-export default function ServicePage({ serviceName, serviceSlug, listings, locationMap }) {
+export default function ServicePage({ serviceName, serviceSlug, listings, locationMap, serviceDesc }) {
   const listingCount = listings.length;
   const cities = Object.keys(locationMap).sort((a, b) => locationMap[b] - locationMap[a]);
 
@@ -77,7 +81,7 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
   const jsonLd = [
     generateBreadcrumbSchema([
       { name: 'Home', url: 'https://dommedirectory.com' },
-      { name: 'Services', url: 'https://dommedirectory.com/cities' },
+      { name: 'Services', url: 'https://dommedirectory.com/services' },
       { name: serviceName, url: pageUrl },
     ]),
     {
@@ -97,6 +101,12 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
     },
   ];
 
+  // Add FAQ schema when we have service description FAQ data
+  if (listingCount === 0 && serviceDesc?.faq?.length > 0) {
+    const faqSchema = generateFAQSchema(serviceDesc.faq);
+    if (faqSchema) jsonLd.push(faqSchema);
+  }
+
   return (
     <Layout>
       <SEO
@@ -112,7 +122,7 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
           <nav className="text-sm text-gray-500 mb-3">
             <Link href="/" className="hover:text-white transition-colors">Home</Link>
             <span className="mx-2">/</span>
-            <Link href="/cities" className="hover:text-white transition-colors">Locations</Link>
+            <Link href="/services" className="hover:text-white transition-colors">Services</Link>
             <span className="mx-2">/</span>
             <span className="text-gray-300">{serviceName}</span>
           </nav>
@@ -128,20 +138,103 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Main listings grid */}
+          {/* Main content */}
           <div className="lg:col-span-3">
             {listingCount === 0 ? (
-              <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
-                <h2 className="text-xl font-medium text-white mb-3">No listings yet</h2>
-                <p className="text-gray-400 mb-6">
-                  Be the first to create a {serviceName} listing.
-                </p>
-                <Link
-                  href="/auth/register"
-                  className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                >
-                  Create Your Listing
-                </Link>
+              <div className="space-y-8">
+                {/* Rich empty state with service description content */}
+                {serviceDesc ? (
+                  <>
+                    {/* What is [Service]? */}
+                    <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                      <h2 className="text-2xl font-bold text-white mb-4">
+                        What is {serviceName}?
+                      </h2>
+                      {serviceDesc.longDescription.split('\n\n').map((para, i) => (
+                        <p key={i} className="text-gray-300 leading-relaxed mb-4 last:mb-0">
+                          {para}
+                        </p>
+                      ))}
+                    </section>
+
+                    {/* What to Expect */}
+                    <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                      <h2 className="text-2xl font-bold text-white mb-4">
+                        What to Expect in a {serviceName} Session
+                      </h2>
+                      {serviceDesc.whatToExpect.split('\n\n').map((para, i) => (
+                        <p key={i} className="text-gray-300 leading-relaxed mb-4 last:mb-0">
+                          {para}
+                        </p>
+                      ))}
+                    </section>
+
+                    {/* What to Look For */}
+                    {serviceDesc.whatToLookFor?.length > 0 && (
+                      <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                        <h2 className="text-2xl font-bold text-white mb-4">
+                          What to Look For in a {serviceName} Provider
+                        </h2>
+                        <ul className="space-y-3">
+                          {serviceDesc.whatToLookFor.map((item, i) => (
+                            <li key={i} className="flex items-start gap-3 text-gray-300">
+                              <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+
+                    {/* FAQ */}
+                    {serviceDesc.faq?.length > 0 && (
+                      <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                        <h2 className="text-2xl font-bold text-white mb-6">
+                          Frequently Asked Questions About {serviceName}
+                        </h2>
+                        <div className="space-y-6">
+                          {serviceDesc.faq.map((item, i) => (
+                            <div key={i}>
+                              <h3 className="text-white font-semibold mb-2">{item.question}</h3>
+                              <p className="text-gray-400 leading-relaxed">{item.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* CTA */}
+                    <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
+                      <h2 className="text-xl font-medium text-white mb-3">
+                        Are you a {serviceName} provider?
+                      </h2>
+                      <p className="text-gray-400 mb-6">
+                        Be the first to create a {serviceName} listing on DommeDirectory and reach clients searching for this service.
+                      </p>
+                      <Link
+                        href="/auth/register"
+                        className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                      >
+                        Create Your Listing
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
+                    <h2 className="text-xl font-medium text-white mb-3">No listings yet</h2>
+                    <p className="text-gray-400 mb-6">
+                      Be the first to create a {serviceName} listing.
+                    </p>
+                    <Link
+                      href="/auth/register"
+                      className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                    >
+                      Create Your Listing
+                    </Link>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -194,6 +287,31 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
 
           {/* Sidebar */}
           <aside className="lg:col-span-1 space-y-6">
+            {/* Related services (show when empty state with service desc) */}
+            {listingCount === 0 && serviceDesc?.relatedServices?.length > 0 && (
+              <div className="bg-[#1a1a1a] rounded-lg p-5 border border-gray-800">
+                <h3 className="text-white font-semibold mb-3 text-sm uppercase tracking-wide">
+                  Related Services
+                </h3>
+                <ul className="space-y-2">
+                  {serviceDesc.relatedServices.map((slug) => {
+                    const name = SERVICE_BY_SLUG[slug];
+                    if (!name) return null;
+                    return (
+                      <li key={slug}>
+                        <Link
+                          href={`/services/${slug}`}
+                          className="text-gray-400 hover:text-white transition-colors text-sm"
+                        >
+                          {name}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
             {/* Cities offering this service */}
             {cities.length > 0 && (
               <div className="bg-[#1a1a1a] rounded-lg p-5 border border-gray-800">
@@ -202,7 +320,6 @@ export default function ServicePage({ serviceName, serviceSlug, listings, locati
                 </h3>
                 <ul className="space-y-2">
                   {cities.slice(0, 15).map((city) => {
-                    const listing = listings.find((l) => l.locations?.city === city);
                     const citySlug = city.toLowerCase().replace(/\s+/g, '-');
                     return (
                       <li key={city}>

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import Layout from '../../../components/layout/Layout';
-import SEO, { generateBreadcrumbSchema } from '../../../components/ui/SEO';
+import SEO, { generateBreadcrumbSchema, generateFAQSchema } from '../../../components/ui/SEO';
 import { supabase, isSupabaseConfigured } from '../../../utils/supabase';
 import { getLocationBySlug } from '../../../services/locations';
 import { ALL_SERVICES, SERVICE_BY_SLUG, slugifyService } from '../../../utils/services';
 import { buildProfilePath } from '../../../utils/profileSlug';
+import { getServiceDescription } from '../../../data/serviceDescriptions';
 
 export async function getServerSideProps(context) {
   const { city: citySlug, service: serviceSlug } = context.params;
@@ -16,7 +17,7 @@ export async function getServerSideProps(context) {
 
   if (!isSupabaseConfigured) {
     return {
-      props: { location: null, serviceName, serviceSlug, listings: [] },
+      props: { location: null, serviceName, serviceSlug, listings: [], serviceDesc: getServiceDescription(serviceSlug) },
     };
   }
 
@@ -43,7 +44,7 @@ export async function getServerSideProps(context) {
   if (error) {
     console.error('Location+service page query error:', error);
     return {
-      props: { location, serviceName, serviceSlug, listings: [], otherServices: [] },
+      props: { location, serviceName, serviceSlug, listings: [], otherServices: [], serviceDesc: getServiceDescription(serviceSlug) },
     };
   }
 
@@ -76,12 +77,14 @@ export async function getServerSideProps(context) {
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count, slug: slugifyService(name) }));
 
+  const serviceDesc = getServiceDescription(serviceSlug);
+
   return {
-    props: { location, serviceName, serviceSlug, listings, otherServices },
+    props: { location, serviceName, serviceSlug, listings, otherServices, serviceDesc },
   };
 }
 
-export default function LocationServicePage({ location, serviceName, serviceSlug, listings, otherServices = [] }) {
+export default function LocationServicePage({ location, serviceName, serviceSlug, listings, otherServices = [], serviceDesc }) {
   if (!location) {
     return (
       <Layout>
@@ -125,6 +128,12 @@ export default function LocationServicePage({ location, serviceName, serviceSlug
     },
   ];
 
+  // Add FAQ schema when empty with service description data
+  if (listingCount === 0 && serviceDesc?.faq?.length > 0) {
+    const faqSchema = generateFAQSchema(serviceDesc.faq);
+    if (faqSchema) jsonLd.push(faqSchema);
+  }
+
   return (
     <Layout>
       <SEO
@@ -162,25 +171,99 @@ export default function LocationServicePage({ location, serviceName, serviceSlug
           {/* Listings */}
           <div className="lg:col-span-3">
             {listingCount === 0 ? (
-              <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
-                <h2 className="text-xl font-medium text-white mb-3">No listings yet</h2>
-                <p className="text-gray-400 mb-4">
-                  Be the first to offer {serviceName} in {location.city}.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Link
-                    href="/auth/register"
-                    className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                  >
-                    Create Your Listing
-                  </Link>
-                  <Link
-                    href={`/location/${citySlug}`}
-                    className="inline-block bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                  >
-                    All dommes in {location.city}
-                  </Link>
-                </div>
+              <div className="space-y-8">
+                {serviceDesc ? (
+                  <>
+                    {/* Service intro with city context */}
+                    <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                      <h2 className="text-2xl font-bold text-white mb-4">
+                        {serviceName} in {location.city}
+                      </h2>
+                      <p className="text-gray-300 leading-relaxed mb-4">
+                        {serviceDesc.shortDescription} While there are no {serviceName.toLowerCase()} providers listed in {location.city} yet, DommeDirectory is actively growing its verified provider network in {locationStr}.
+                      </p>
+                      {serviceDesc.longDescription.split('\n\n').slice(0, 2).map((para, i) => (
+                        <p key={i} className="text-gray-300 leading-relaxed mb-4 last:mb-0">
+                          {para}
+                        </p>
+                      ))}
+                    </section>
+
+                    {/* What to Expect */}
+                    <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                      <h2 className="text-2xl font-bold text-white mb-4">
+                        What to Expect in a {serviceName} Session
+                      </h2>
+                      {serviceDesc.whatToExpect.split('\n\n').map((para, i) => (
+                        <p key={i} className="text-gray-300 leading-relaxed mb-4 last:mb-0">
+                          {para}
+                        </p>
+                      ))}
+                    </section>
+
+                    {/* FAQ */}
+                    {serviceDesc.faq?.length > 0 && (
+                      <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+                        <h2 className="text-2xl font-bold text-white mb-6">
+                          {serviceName} FAQ
+                        </h2>
+                        <div className="space-y-6">
+                          {serviceDesc.faq.map((item, i) => (
+                            <div key={i}>
+                              <h3 className="text-white font-semibold mb-2">{item.question}</h3>
+                              <p className="text-gray-400 leading-relaxed">{item.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* CTA */}
+                    <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
+                      <h2 className="text-xl font-medium text-white mb-3">
+                        Offer {serviceName} in {location.city}?
+                      </h2>
+                      <p className="text-gray-400 mb-6">
+                        Be the first to list {serviceName.toLowerCase()} services in {location.city} and connect with clients in your area.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Link
+                          href="/auth/register"
+                          className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                        >
+                          Create Your Listing
+                        </Link>
+                        <Link
+                          href={`/location/${citySlug}`}
+                          className="inline-block bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                        >
+                          All dommes in {location.city}
+                        </Link>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
+                    <h2 className="text-xl font-medium text-white mb-3">No listings yet</h2>
+                    <p className="text-gray-400 mb-4">
+                      Be the first to offer {serviceName} in {location.city}.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                      <Link
+                        href="/auth/register"
+                        className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                      >
+                        Create Your Listing
+                      </Link>
+                      <Link
+                        href={`/location/${citySlug}`}
+                        className="inline-block bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                      >
+                        All dommes in {location.city}
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -243,7 +326,7 @@ export default function LocationServicePage({ location, serviceName, serviceSlug
                 href={`/location/${citySlug}`}
                 className="text-red-500 hover:text-red-400 transition-colors text-sm block mb-3"
               >
-                All dommes in {location.city} →
+                All dommes in {location.city} &rarr;
               </Link>
               <ul className="space-y-1.5">
                 {(otherServices.length > 0 ? otherServices : ALL_SERVICES.filter((s) => s !== serviceName).map((name) => ({ name, count: 0, slug: slugifyService(name) }))).slice(0, 12).map(({ name, count: c, slug }) => (
@@ -269,7 +352,7 @@ export default function LocationServicePage({ location, serviceName, serviceSlug
                 href={`/services/${serviceSlug}`}
                 className="text-gray-400 hover:text-white transition-colors text-sm"
               >
-                All {serviceName} providers →
+                All {serviceName} providers &rarr;
               </Link>
             </div>
           </aside>

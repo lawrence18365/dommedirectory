@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Layout from '../components/layout/Layout';
-import SEO from '../components/ui/SEO';
+import SEO, { generateFAQSchema } from '../components/ui/SEO';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -85,7 +85,11 @@ export default function Help() {
 
   return (
     <Layout>
-      <SEO title="Help Center - DommeDirectory" description="Find answers to common questions." />
+      <SEO
+        title="Help Center - DommeDirectory"
+        description="Find answers to common questions about DommeDirectory — creating profiles, verification, privacy, billing, reporting, and account management."
+        jsonLd={[generateFAQSchema(FAQS)]}
+      />
       
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Hero */}

@@ -2,20 +2,38 @@ import { supabase, isSupabaseConfigured } from '../utils/supabase';
 import { slugify } from '../utils/slugify';
 import { buildProfilePath } from '../utils/profileSlug';
 import { ALL_SERVICES, slugifyService } from '../utils/services';
+import { GUIDES } from '../data/guides';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dommedirectory.com';
 
 const STATIC_PAGES = [
   { url: '/', priority: '1.0', changefreq: 'daily' },
   { url: '/cities', priority: '0.9', changefreq: 'daily' },
+  { url: '/services', priority: '0.9', changefreq: 'daily' },
   { url: '/usa', priority: '0.8', changefreq: 'weekly' },
   { url: '/blog', priority: '0.8', changefreq: 'daily' },
+  { url: '/guide', priority: '0.8', changefreq: 'weekly' },
   { url: '/reviews', priority: '0.7', changefreq: 'weekly' },
   { url: '/videos', priority: '0.7', changefreq: 'weekly' },
+  { url: '/pricing', priority: '0.6', changefreq: 'monthly' },
+  { url: '/help', priority: '0.5', changefreq: 'monthly' },
   { url: '/about', priority: '0.5', changefreq: 'monthly' },
   { url: '/contact', priority: '0.5', changefreq: 'monthly' },
   { url: '/safety', priority: '0.6', changefreq: 'monthly' },
+  { url: '/press', priority: '0.4', changefreq: 'monthly' },
+  { url: '/careers', priority: '0.4', changefreq: 'monthly' },
+  { url: '/privacy', priority: '0.3', changefreq: 'yearly' },
+  { url: '/terms', priority: '0.3', changefreq: 'yearly' },
+  { url: '/cookies', priority: '0.3', changefreq: 'yearly' },
+  { url: '/content-policy', priority: '0.3', changefreq: 'yearly' },
 ];
+
+const guideEntries = GUIDES.map((guide) => ({
+  url: `/guide/${guide.slug}`,
+  priority: '0.7',
+  changefreq: 'monthly',
+  lastmod: null,
+}));
 
 const toIso = (value) => {
   if (!value) return null;
@@ -45,7 +63,7 @@ export async function getServerSideProps({ res }) {
   }));
 
   if (!isSupabaseConfigured) {
-    const xml = buildSitemap(staticEntries);
+    const xml = buildSitemap([...staticEntries, ...guideEntries]);
     res.setHeader('Content-Type', 'text/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate');
     res.write(xml);
@@ -147,7 +165,7 @@ export async function getServerSideProps({ res }) {
       lastmod: toIso(listing.updated_at || listing.created_at),
     }));
 
-    const sitemapEntries = [...staticEntries, ...serviceEntries, ...blogEntries, ...locationEntries, ...comboEntries, ...listingEntries];
+    const sitemapEntries = [...staticEntries, ...guideEntries, ...serviceEntries, ...blogEntries, ...locationEntries, ...comboEntries, ...listingEntries];
     const xml = buildSitemap(sitemapEntries);
 
     res.setHeader('Content-Type', 'text/xml; charset=utf-8');

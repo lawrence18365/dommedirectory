@@ -4,6 +4,8 @@ import Layout from '../../../components/layout/Layout';
 import SEO from '../../../components/ui/SEO';
 import { getLocationBySlug, getListingsByLocation } from '../../../services/locations';
 import { buildProfilePath } from '../../../utils/profileSlug';
+import { ALL_SERVICES, slugifyService } from '../../../utils/services';
+import { GUIDES } from '../../../data/guides';
 
 export async function getServerSideProps(context) {
   const { city } = context.params;
@@ -34,6 +36,8 @@ export async function getServerSideProps(context) {
     },
   };
 }
+
+const RELEVANT_GUIDES = GUIDES.slice(0, 3);
 
 export default function CityLocation({ location, listings, error }) {
   const router = useRouter();
@@ -122,17 +126,81 @@ export default function CityLocation({ location, listings, error }) {
         )}
 
         {listingCount === 0 ? (
-          <div className="bg-white shadow rounded-lg p-6 text-center">
-            <h2 className="text-xl font-medium text-gray-800 mb-4">No listings yet</h2>
-            <p className="text-gray-600 mb-4">
-              Be the first to create a listing in {location.city}!
-            </p>
-            <Link
-              href="/listings/create"
-              className="inline-block bg-purple-700 text-white px-4 py-2 rounded-md font-medium hover:bg-purple-800 transition-colors"
-            >
-              Create Listing
-            </Link>
+          <div className="space-y-8">
+            {/* Intro */}
+            <section className="bg-[#1a1a1a] rounded-lg p-8 border border-gray-800">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                Professional Domination Services in {location.city}
+              </h2>
+              <p className="text-gray-300 leading-relaxed mb-4">
+                DommeDirectory is building a verified directory of professional dommes in {locationStr}. While there are no listings in {location.city} yet, providers are joining every week. Browse the service categories below to see what&apos;s available, or check back soon.
+              </p>
+              <p className="text-gray-300 leading-relaxed">
+                If you&apos;re a professional domme based in or serving {location.city}, you can create a free listing to be among the first verified providers in your area.
+              </p>
+            </section>
+
+            {/* Service links grid */}
+            <section>
+              <h2 className="text-xl font-bold text-white mb-4">
+                Browse Services in {location.city}
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {ALL_SERVICES.map((service) => {
+                  const slug = slugifyService(service);
+                  return (
+                    <Link
+                      key={slug}
+                      href={`/location/${citySlug}/${slug}`}
+                      className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 hover:border-red-600/40 transition-colors text-center"
+                    >
+                      <span className="text-gray-300 text-sm font-medium hover:text-white transition-colors">
+                        {service}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Guide links */}
+            <section>
+              <h2 className="text-xl font-bold text-white mb-4">
+                Guides for Getting Started
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {RELEVANT_GUIDES.map((guide) => (
+                  <Link
+                    key={guide.slug}
+                    href={`/guide/${guide.slug}`}
+                    className="bg-[#1a1a1a] rounded-lg p-5 border border-gray-800 hover:border-red-600/40 transition-colors group"
+                  >
+                    <h3 className="text-white font-semibold text-sm group-hover:text-red-400 transition-colors mb-2">
+                      {guide.title}
+                    </h3>
+                    <p className="text-gray-500 text-xs line-clamp-2">
+                      {guide.metaDescription}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            {/* CTA */}
+            <div className="bg-[#1a1a1a] rounded-lg p-8 text-center border border-gray-800">
+              <h2 className="text-xl font-medium text-white mb-3">
+                Are you a provider in {location.city}?
+              </h2>
+              <p className="text-gray-400 mb-6">
+                Be the first to create a verified listing in {location.city} and reach clients searching in your area.
+              </p>
+              <Link
+                href="/auth/register"
+                className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+              >
+                Create Your Listing
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

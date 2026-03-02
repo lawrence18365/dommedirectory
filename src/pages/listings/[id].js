@@ -213,6 +213,11 @@ export async function getListingPagePropsById(id) {
       return { listing: null, similarListings: [], error: null, notFound: true };
     }
 
+    // Treat inactive listings as unavailable so direct URLs cannot render them.
+    if (!listing.is_active) {
+      return { listing: null, similarListings: [], error: null, notFound: true };
+    }
+
     let similarListings = [];
     if (listing.location_id) {
       const { data: similar } = await supabase

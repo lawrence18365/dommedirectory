@@ -4,14 +4,39 @@ import Link from 'next/link';
 import { signIn } from '../../services/auth';
 import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
 import Layout from '../../components/layout/Layout';
-import { isValidEmail, sanitizeString } from '../../utils/validation'; // Assuming Layout component exists
+import { isValidEmail, sanitizeString } from '../../utils/validation';
+import { supabase } from '../../utils/supabase';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const router = useRouter();
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Enter your email address above, then click "Forgot password?"');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address first.');
+      return;
+    }
+    setResetLoading(true);
+    setError(null);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    });
+    setResetLoading(false);
+    if (resetError) {
+      setError('Failed to send reset email. Please try again.');
+    } else {
+      setResetSent(true);
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -122,6 +147,12 @@ const LoginPage = () => {
             </div>
           )}
 
+          {resetSent && (
+            <div className="bg-green-900/20 border border-green-500/50 rounded p-3">
+              <p className="text-green-200 text-sm">Password reset email sent to <strong>{email}</strong>. Check your inbox.</p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <button
               type="submit"
@@ -131,9 +162,17 @@ const LoginPage = () => {
               {loading ? 'Logging In...' : 'Login'}
             </button>
           </div>
-          <div className="text-center mt-4">
-            <Link href="/auth/register" className="inline-block align-baseline font-bold text-sm text-red-500 hover:text-red-400">
-              Don&apos;t have an account? Sign Up
+          <div className="flex items-center justify-between mt-4">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetLoading}
+              className="text-sm text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
+            >
+              {resetLoading ? 'Sending...' : 'Forgot password?'}
+            </button>
+            <Link href="/auth/register" className="font-bold text-sm text-red-500 hover:text-red-400">
+              Sign Up
             </Link>
           </div>
         </form>

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useUser, useSessionContext } from '@supabase/auth-helpers-react';
 import { Loader2 } from 'lucide-react';
 import Layout from '../components/layout/Layout';
-import SEO from '../components/ui/SEO';
+import SEO, { generateFAQSchema } from '../components/ui/SEO';
 import PricingCard from '../components/ui/PricingCard';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -197,6 +197,7 @@ export default function Pricing() {
       <SEO
         title="Pricing - DommeDirectory Provider Plans"
         description="Start with a compliant listing and upgrade through manual, performance-driven provider plans."
+        jsonLd={[generateFAQSchema(FAQS)]}
       />
 
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-16">

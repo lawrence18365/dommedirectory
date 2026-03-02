@@ -1,14 +1,86 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase, isSupabaseConfigured } from '../../utils/supabase';
 import { getOnboardingStatus, touchProfileLastActive } from '../../services/profiles';
+import { validatePassword } from '../../utils/validation';
 import Layout from '../../components/layout/Layout';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 export default function AuthCallback() {
   const router = useRouter();
-  const [status, setStatus] = useState('loading'); // loading, success, error
+  const [status, setStatus] = useState('loading'); // loading, recovery, success, error
   const [message, setMessage] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  const redirectAfterAuth = useCallback(async (session, successMessage = 'Authentication successful!') => {
+    let nextPath = '/dashboard';
+
+    if (session?.user?.id) {
+      await touchProfileLastActive(session.user.id);
+      const onboarding = await getOnboardingStatus(session.user.id);
+      if (!onboarding.isComplete) {
+        nextPath = '/onboarding';
+      }
+    }
+
+    setStatus('success');
+    setMessage(successMessage);
+    setTimeout(() => {
+      router.push(nextPath);
+    }, 2000);
+  }, [router]);
+
+  const handlePasswordReset = async (event) => {
+    event.preventDefault();
+    setRecoveryError('');
+
+    if (!newPassword || !confirmPassword) {
+      setRecoveryError('Please fill in both password fields.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setRecoveryError('Passwords do not match.');
+      return;
+    }
+
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      setRecoveryError(passwordValidation.errors.join('. '));
+      return;
+    }
+
+    setSavingPassword(true);
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        throw updateError;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        await redirectAfterAuth(session, 'Password updated successfully.');
+      } else {
+        setStatus('success');
+        setMessage('Password updated successfully. Please log in with your new password.');
+        setTimeout(() => {
+          router.push('/auth/login');
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Password reset completion error:', error);
+      setRecoveryError(error.message || 'Failed to update password. Please try again.');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -38,9 +110,14 @@ export default function AuthCallback() {
 
         const accessToken = hashParams.get('access_token') || queryParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+        const code = hashParams.get('code') || queryParams.get('code');
         const type = hashParams.get('type') || queryParams.get('type');
+        const isRecovery = type === 'recovery';
+        const isSignup = type === 'signup';
+        let session = null;
+        let usedExistingSession = false;
 
-        if (accessToken) {
+        if (accessToken && refreshToken) {
           // Set the session with the tokens
           const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
@@ -50,66 +127,48 @@ export default function AuthCallback() {
           if (sessionError) {
             throw sessionError;
           }
-
-          if (data.session) {
-            const userId = data.session.user?.id;
-            const accessToken = data.session.access_token;
-            if (accessToken) {
-              fetch('/api/referrals/attribute', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              }).catch(() => {});
-            }
-
-            let nextPath = '/dashboard';
-            if (userId) {
-              touchProfileLastActive(userId);
-              const onboarding = await getOnboardingStatus(userId);
-              if (!onboarding.isComplete) {
-                nextPath = '/onboarding';
-              }
-            }
-
-            setStatus('success');
-            setMessage(type === 'signup' 
-              ? 'Email confirmed! Your account is now active.' 
-              : 'Authentication successful!');
-            
-            // Redirect after a short delay
-            setTimeout(() => {
-              router.push(nextPath);
-            }, 2000);
-          } else {
-            throw new Error('No session established');
+          session = data.session;
+        } else if (code) {
+          // PKCE/email-link flows can return an auth code instead of raw tokens
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            throw exchangeError;
           }
+          session = data.session;
         } else {
           // No tokens found - check if we already have a session
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session) {
-            if (session.access_token) {
-              fetch('/api/referrals/attribute', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${session.access_token}`,
-                },
-              }).catch(() => {});
-            }
-
-            touchProfileLastActive(session.user.id);
-            const onboarding = await getOnboardingStatus(session.user.id);
-            const nextPath = onboarding.isComplete ? '/dashboard' : '/onboarding';
-            setStatus('success');
-            setMessage('You are already logged in.');
-            setTimeout(() => {
-              router.push(nextPath);
-            }, 1500);
-          } else {
-            throw new Error('No authentication tokens found');
-          }
+          const {
+            data: { session: existingSession },
+          } = await supabase.auth.getSession();
+          session = existingSession;
+          usedExistingSession = true;
         }
+
+        if (!session) {
+          throw new Error('No authentication tokens found');
+        }
+
+        if (isRecovery) {
+          setStatus('recovery');
+          setMessage('Set a new password to finish resetting your account.');
+          return;
+        }
+
+        if (session.access_token) {
+          fetch('/api/referrals/attribute', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }).catch(() => {});
+        }
+
+        await redirectAfterAuth(
+          session,
+          usedExistingSession
+            ? 'You are already logged in.'
+            : (isSignup ? 'Email confirmed! Your account is now active.' : 'Authentication successful!')
+        );
       } catch (err) {
         console.error('Auth callback error:', err);
         setStatus('error');
@@ -118,7 +177,7 @@ export default function AuthCallback() {
     };
 
     handleAuthCallback();
-  }, [router.isReady, router.query]);
+  }, [router.isReady, router.query, redirectAfterAuth]);
 
   return (
     <Layout>
@@ -138,6 +197,62 @@ export default function AuthCallback() {
               <h1 className="text-2xl font-bold text-white mb-2">Success!</h1>
               <p className="text-gray-400 mb-6">{message}</p>
               <p className="text-sm text-gray-500">Redirecting...</p>
+            </>
+          )}
+
+          {status === 'recovery' && (
+            <>
+              <h1 className="text-2xl font-bold text-white mb-2">Reset Your Password</h1>
+              <p className="text-gray-400 mb-6">{message}</p>
+              <form onSubmit={handlePasswordReset} className="space-y-4 text-left">
+                <div>
+                  <label htmlFor="new-password" className="block text-gray-300 text-sm font-medium mb-2">
+                    New password
+                  </label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-red-600"
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="confirm-password" className="block text-gray-300 text-sm font-medium mb-2">
+                    Confirm new password
+                  </label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-red-600"
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+
+                {recoveryError && (
+                  <div className="bg-red-900/20 border border-red-500/50 rounded p-3">
+                    <p className="text-red-200 text-sm">{recoveryError}</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500">
+                  Use at least 8 characters with uppercase, lowercase, number, and special character.
+                </p>
+
+                <button
+                  type="submit"
+                  disabled={savingPassword}
+                  className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition-colors"
+                >
+                  {savingPassword ? 'Saving...' : 'Save New Password'}
+                </button>
+              </form>
             </>
           )}
 

@@ -2,7 +2,7 @@
 """Daily outreach runner backed by Supabase outreach_contacts table.
 
 Replaces the CSV-tracker version. Reads candidates from DB, writes results
-back to DB. Also handles the day-4 follow-up email with real view counts.
+back to DB with a consent-first template (no "listing is live" language).
 
 Required env vars:
   SUPABASE_URL
@@ -90,6 +90,11 @@ def clean_url(url: str) -> str:
     return url
 
 
+def looks_like_email(value: str) -> bool:
+    v = (value or '').strip()
+    return bool(re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', v))
+
+
 def extract_mailto(soup: BeautifulSoup):
     out, seen = [], set()
     for a in soup.select('a[href]'):
@@ -155,21 +160,20 @@ def pick_field(form, patterns, include_textarea=False):
     return None
 
 
-def build_initial_body(listing_url: str, sender_name: str, reply_to_email: str) -> str:
+def build_initial_body(sender_name: str, reply_to_email: str) -> str:
     return (
         'Hi,\n\n'
-        'We built a Toronto directory for clients looking for exactly what you offer, '
-        'and we created a profile for you based on your public presence.\n\n'
-        f"It's live here:\n{listing_url}\n\n"
-        'You can claim it for free and update your photos, rates, availability, and '
-        'contact links — takes a few minutes. Providers who claim this week also get '
-        '7 days of free featured placement at the top of the Toronto page.\n\n'
-        "If you'd rather we take it down, just reply and we'll remove it same day.\n\n"
+        "I'm with DommeDirectory, a client discovery platform for independent providers.\n\n"
+        "We can prepare a private draft profile for you to review, but nothing is published "
+        "without your explicit approval.\n\n"
+        'If you want us to send a draft for approval, reply: YES\n'
+        'If you do not want contact, reply: NO\n\n'
+        "We'll honor either response immediately.\n\n"
         f'— {sender_name}\nDommeDirectory\n{reply_to_email}\n'
     )
 
 
-def submit_form(session, page_url, form, listing_url, sender_name, reply_to_email):
+def submit_form(session, page_url, form, sender_name, reply_to_email):
     if has_captcha(str(form)):
         return 'needs_manual', 'captcha_present', page_url
 
@@ -185,7 +189,7 @@ def submit_form(session, page_url, form, listing_url, sender_name, reply_to_emai
     if message_field is None or not message_field.get('name'):
         return 'needs_manual', 'form_no_message_field', page_url
 
-    body = build_initial_body(listing_url, sender_name, reply_to_email)
+    body = build_initial_body(sender_name, reply_to_email)
 
     data = {}
     for inp in form.find_all(['input', 'textarea', 'select']):
@@ -207,7 +211,7 @@ def submit_form(session, page_url, form, listing_url, sender_name, reply_to_emai
     if email_field and email_field.get('name'):
         data[email_field.get('name')] = reply_to_email
     if subject_field and subject_field.get('name'):
-        data[subject_field.get('name')] = 'Your listing on DommeDirectory — quick note'
+        data[subject_field.get('name')] = 'Quick permission request from DommeDirectory'
 
     try:
         if method == 'get':
@@ -227,13 +231,13 @@ def submit_form(session, page_url, form, listing_url, sender_name, reply_to_emai
     return 'needs_manual', f'http_{resp.status_code}', resp.url
 
 
-def send_email(to_addr, listing_url, sender_name, reply_to_email, smtp_user, smtp_pass, smtp_host, smtp_port):
+def send_email(to_addr, sender_name, reply_to_email, smtp_user, smtp_pass, smtp_host, smtp_port):
     msg = EmailMessage()
     msg['From'] = f'{sender_name} <{smtp_user}>'
     msg['To'] = to_addr
     msg['Reply-To'] = reply_to_email
-    msg['Subject'] = 'Your listing on DommeDirectory — quick note'
-    msg.set_content(build_initial_body(listing_url, sender_name, reply_to_email))
+    msg['Subject'] = 'Quick permission request from DommeDirectory'
+    msg.set_content(build_initial_body(sender_name, reply_to_email))
 
     ctx = ssl.create_default_context()
     try:
@@ -248,7 +252,11 @@ def send_email(to_addr, listing_url, sender_name, reply_to_email, smtp_user, smt
 def process_candidate(row, sender_name, reply_to_email, smtp_user, smtp_pass, smtp_host, smtp_port):
     """Try to contact a provider. Returns (status, evidence, delivery_url)."""
     website = clean_url(row.get('seed_contact_website', ''))
-    listing_url = (row.get('listing_url') or '').strip()
+    seed_email = (row.get('seed_contact_email') or '').strip()
+
+    if looks_like_email(seed_email):
+        return send_email(seed_email, sender_name, reply_to_email,
+                          smtp_user, smtp_pass, smtp_host, smtp_port)
 
     if not website:
         return 'no_contact_method', 'missing_seed_contact_website', ''
@@ -276,7 +284,7 @@ def process_candidate(row, sender_name, reply_to_email, smtp_user, smtp_pass, sm
     emails = extract_mailto(home_soup)
 
     if emails:
-        return send_email(emails[0], listing_url, sender_name, reply_to_email,
+        return send_email(emails[0], sender_name, reply_to_email,
                           smtp_user, smtp_pass, smtp_host, smtp_port)
 
     pages = [home.url] + contact_pages(home.url, home_soup)
@@ -298,7 +306,7 @@ def process_candidate(row, sender_name, reply_to_email, smtp_user, smtp_pass, sm
         soup = BeautifulSoup(resp.text or '', 'html.parser')
         for form in soup.find_all('form'):
             status, evidence, delivery_url = submit_form(
-                session, resp.url, form, listing_url, sender_name, reply_to_email)
+                session, resp.url, form, sender_name, reply_to_email)
             if status in {'delivered_form', 'needs_manual'}:
                 return status, evidence, delivery_url
 
@@ -308,21 +316,6 @@ def process_candidate(row, sender_name, reply_to_email, smtp_user, smtp_pass, sm
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
-
-def get_listing_url(sb: Client, listing_id: str) -> str:
-    """Build the public URL for a listing from its DB record."""
-    res = sb.table('listings').select('slug, profiles(display_name), locations(city, country)') \
-        .eq('id', listing_id).limit(1).execute()
-    if not res.data:
-        return ''
-    row = res.data[0]
-    slug = row.get('slug') or ''
-    city = (row.get('locations') or {}).get('city', '').lower().replace(' ', '-')
-    name = (row.get('profiles') or {}).get('display_name', '').lower().replace(' ', '-')
-    name = re.sub(r'[^a-z0-9-]', '', name)
-    if slug:
-        return f'https://dommedirectory.com/profiles/{slug}'
-    return f'https://dommedirectory.com/location/{city}'
 
 
 def record_attempt(sb: Client, contact_id: str, listing_id: str, channel: str,
@@ -369,21 +362,43 @@ def main():
     candidates = result.data or []
 
     sent_today = 0
+    seen_targets = set()
+
+    # Prevent re-contacting duplicate rows for emails already touched in prior runs.
+    email_rows = sb.table('outreach_contacts').select('seed_contact_email, status').limit(5000).execute().data or []
+    already_contacted_emails = {
+        (r.get('seed_contact_email') or '').strip().lower()
+        for r in email_rows
+        if (r.get('seed_contact_email') or '').strip()
+        and (r.get('status') or '').strip() != 'not_contacted'
+    }
 
     for row in candidates:
         if sent_today >= daily_limit:
             break
 
         contact_id = row['id']
-        listing_id = row.get('listing_id') or ''
+        listing_id = row.get('listing_id')
+        seed_email = (row.get('seed_contact_email') or '').strip().lower()
         website = clean_url(row.get('seed_contact_website', ''))
-        if not website:
+        if seed_email and seed_email in already_contacted_emails:
+            sb.table('outreach_contacts').update({
+                'status': 'needs_manual',
+                'notes': 'duplicate_target_already_contacted',
+                'updated_at': now_iso(),
+            }).eq('id', contact_id).execute()
+            print(f"[{row.get('city','?')}] {row.get('display_name','?')} -> suppressed (already_contacted_email)")
             continue
-
-        listing_url = get_listing_url(sb, listing_id) if listing_id else ''
+        if not website and not seed_email:
+            continue
+        dedupe_key = f'email:{seed_email}' if seed_email else f'site:{website.lower()}'
+        if dedupe_key in seen_targets:
+            print(f"[{row.get('city','?')}] {row.get('display_name','?')} -> skipped (duplicate_target)")
+            continue
+        seen_targets.add(dedupe_key)
 
         status, evidence, delivery_url = process_candidate(
-            {'seed_contact_website': website, 'listing_url': listing_url},
+            {'seed_contact_website': website},
             sender_name, reply_to, smtp_user, smtp_pass, smtp_host, smtp_port,
         )
 
@@ -405,20 +420,20 @@ def main():
             'status': db_status,
             'last_contacted_at': now_iso(),
             'follow_up_count': 1,
-            # Schedule day-4 follow-up if delivery succeeded
             'next_follow_up_at': None,
             'notes': evidence,
             'updated_at': now_iso(),
         }).eq('id', contact_id).execute()
 
-        if listing_id:
-            record_attempt(sb, contact_id, listing_id, channel,
-                           delivery_url, evidence, attempt_status, 'v1_initial')
+        record_attempt(sb, contact_id, listing_id, channel,
+                       delivery_url, evidence, attempt_status, 'v1_permission_request')
 
         if status in ('delivered_email', 'delivered_form', 'needs_manual'):
             sent_today += 1
 
         print(f"[{row.get('city','?')}] {row.get('display_name','?')} -> {status} ({evidence})")
+        if seed_email:
+            already_contacted_emails.add(seed_email)
         time.sleep(1.0)
 
     print(f'daily_outreach_db: sent={sent_today}')

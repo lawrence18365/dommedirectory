@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Follow-up email sequence for outreach contacts.
 
-Sends the day-4 "your listing got X views" email — the most important
-conversion email in the sequence. Pulls real view counts from lead_events.
+Consent-safe reminders for contacts that received the initial permission request.
 
 Day-4 trigger: contacted 4+ days ago, not yet claimed, follow_up_count == 1.
 Day-10 trigger: contacted 10+ days ago, not yet claimed, follow_up_count == 2.
@@ -49,19 +48,6 @@ def supabase_client() -> Client:
     return create_client(required_env('SUPABASE_URL'), required_env('SUPABASE_SERVICE_ROLE_KEY'))
 
 
-def get_view_count(sb: Client, listing_id: str, since_iso: str) -> int:
-    """Count listing_view events since a given timestamp."""
-    if not listing_id:
-        return 0
-    res = sb.table('lead_events') \
-        .select('id', count='exact') \
-        .eq('listing_id', listing_id) \
-        .eq('event_type', 'listing_view') \
-        .gte('created_at', since_iso) \
-        .execute()
-    return res.count or 0
-
-
 def send_smtp(to_addr: str, subject: str, body: str,
               sender_name: str, smtp_user: str, smtp_pass: str,
               smtp_host: str, smtp_port: int, reply_to: str) -> bool:
@@ -82,32 +68,23 @@ def send_smtp(to_addr: str, subject: str, body: str,
         return False
 
 
-def day4_body(listing_url: str, view_count: int, sender_name: str, reply_to: str) -> str:
-    view_phrase = (
-        f'Your listing was viewed {view_count} times this week.'
-        if view_count > 0
-        else 'Your listing is live and being indexed by search engines.'
-    )
+def day4_body(sender_name: str, reply_to: str) -> str:
     return (
         f'Hi,\n\n'
-        f'{view_phrase}\n\n'
-        f"Your profile is at:\n{listing_url}\n\n"
-        f"Providers who claim their listing see who's clicking through and can update their "
-        f"rates, photos, and contact info. Takes a few minutes.\n\n"
-        f"Claim it this week and you'll also get 7 days of free featured placement at the "
-        f"top of your city page — no card required.\n\n"
+        f"Quick follow-up on my note from earlier this week.\n\n"
+        f"If you'd like a private draft profile to review, reply YES and we'll send it for approval.\n"
+        f"Nothing is published without your explicit permission.\n\n"
+        f"If you don't want contact, reply NO and we'll close your record.\n\n"
         f"— {sender_name}\nDommeDirectory\n{reply_to}\n"
     )
 
 
-def day10_body(listing_url: str, sender_name: str, reply_to: str) -> str:
+def day10_body(sender_name: str, reply_to: str) -> str:
     return (
         f'Hi,\n\n'
-        f"Quick heads up — your free featured placement offer expires Friday.\n\n"
-        f"Your listing is still live at:\n{listing_url}\n\n"
-        f"If you claim it before the end of the week you'll get 7 days at the top of "
-        f"the city page automatically. After that the offer expires.\n\n"
-        f"Reply if you have questions or want it removed.\n\n"
+        f"Final follow-up from us.\n\n"
+        f"If you'd like a private draft profile to review, reply YES.\n"
+        f"If not, reply NO and we won't contact you again.\n\n"
         f"— {sender_name}\nDommeDirectory\n{reply_to}\n"
     )
 
@@ -131,7 +108,7 @@ def main():
     four_days_ago = days_ago_iso(4)
     ten_days_ago = days_ago_iso(10)
 
-    # Day-4 candidates: delivered 4+ days ago, still not claimed, follow_up_count == 1
+    # Day-4 candidates: initial message sent 4+ days ago, no response yet.
     day4_res = sb.table('outreach_contacts') \
         .select('id, listing_id, display_name, seed_contact_email, follow_up_count, last_contacted_at') \
         .in_('status', ['delivered_email', 'delivered_form']) \
@@ -141,7 +118,7 @@ def main():
         .limit(daily_limit) \
         .execute()
 
-    # Day-10 candidates: delivered 10+ days ago, still not claimed, follow_up_count == 2
+    # Day-10 candidates: day-4 reminder already sent, still no response.
     day10_res = sb.table('outreach_contacts') \
         .select('id, listing_id, display_name, seed_contact_email, follow_up_count, last_contacted_at') \
         .in_('status', ['delivered_email', 'delivered_form']) \
@@ -152,6 +129,7 @@ def main():
         .execute()
 
     sent = 0
+    seen_emails = set()
 
     for row in (day4_res.data or []):
         if sent >= daily_limit:
@@ -159,20 +137,14 @@ def main():
         email = get_contact_email(row)
         if not email:
             continue
+        email_key = email.lower()
+        if email_key in seen_emails:
+            continue
+        seen_emails.add(email_key)
 
-        listing_id = row.get('listing_id') or ''
-        view_count = get_view_count(sb, listing_id, days_ago_iso(7))
-
-        # Build listing URL from DB
-        listing_url = ''
-        if listing_id:
-            r = sb.table('listings').select('slug').eq('id', listing_id).limit(1).execute()
-            if r.data:
-                slug = r.data[0].get('slug', '')
-                listing_url = f'https://dommedirectory.com/profiles/{slug}' if slug else ''
-
-        body = day4_body(listing_url, view_count, sender_name, reply_to)
-        subject = f'Your listing got {view_count} views this week' if view_count > 0 else 'Update on your DommeDirectory listing'
+        listing_id = row.get('listing_id')
+        body = day4_body(sender_name, reply_to)
+        subject = 'Follow-up: permission request from DommeDirectory'
 
         ok = send_smtp(email, subject, body, sender_name, smtp_user, smtp_pass, smtp_host, smtp_port, reply_to)
 
@@ -185,17 +157,17 @@ def main():
 
             sb.table('outreach_attempts').insert({
                 'contact_id': row['id'],
-                'listing_id': listing_id or None,
+                'listing_id': listing_id,
                 'channel': 'email',
                 'delivery_url': f'mailto:{email}',
-                'delivery_evidence': f'day4_views_{view_count}',
+                'delivery_evidence': 'day4_permission_followup',
                 'status': 'sent',
                 'template_version': 'v2_followup_day4',
                 'sent_at': now_iso(),
             }).execute()
 
             sent += 1
-            print(f'[day4] {row.get("display_name","?")} -> {email} ({view_count} views)')
+            print(f'[day4] {row.get("display_name","?")} -> {email}')
 
     for row in (day10_res.data or []):
         if sent >= daily_limit:
@@ -203,17 +175,14 @@ def main():
         email = get_contact_email(row)
         if not email:
             continue
+        email_key = email.lower()
+        if email_key in seen_emails:
+            continue
+        seen_emails.add(email_key)
 
-        listing_id = row.get('listing_id') or ''
-        listing_url = ''
-        if listing_id:
-            r = sb.table('listings').select('slug').eq('id', listing_id).limit(1).execute()
-            if r.data:
-                slug = r.data[0].get('slug', '')
-                listing_url = f'https://dommedirectory.com/profiles/{slug}' if slug else ''
-
-        body = day10_body(listing_url, sender_name, reply_to)
-        subject = 'Your featured placement offer expires Friday'
+        listing_id = row.get('listing_id')
+        body = day10_body(sender_name, reply_to)
+        subject = 'Final follow-up: DommeDirectory permission request'
 
         ok = send_smtp(email, subject, body, sender_name, smtp_user, smtp_pass, smtp_host, smtp_port, reply_to)
 
@@ -226,10 +195,10 @@ def main():
 
             sb.table('outreach_attempts').insert({
                 'contact_id': row['id'],
-                'listing_id': listing_id or None,
+                'listing_id': listing_id,
                 'channel': 'email',
                 'delivery_url': f'mailto:{email}',
-                'delivery_evidence': 'day10_expiry_reminder',
+                'delivery_evidence': 'day10_permission_followup',
                 'status': 'sent',
                 'template_version': 'v3_followup_day10',
                 'sent_at': now_iso(),
